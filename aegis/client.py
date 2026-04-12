@@ -128,3 +128,49 @@ class AegisClient:
             policy=policy,
             metadata=metadata,
         )
+
+    def auto_openai_config(
+        self,
+        *,
+        model: str,
+        messages: list[dict],
+        symptoms: list[str],
+        severity: str,
+        policy: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Returns an OpenAI-ready config after applying Aegis stabilization.
+        Does NOT call OpenAI. Just prepares the payload.
+        """
+
+        # Extract base prompt (assume system message exists)
+        base_prompt = ""
+        if messages and messages[0].get("role") == "system":
+            base_prompt = messages[0]["content"]
+
+        result = self.auto(
+            system_type="multi_agent",
+            base_prompt=base_prompt,
+            symptoms=symptoms,
+            severity=severity,
+            policy=policy,
+            metadata=metadata,
+        )
+
+        runtime = result.get("runtime_config", {})
+        prompt_suffix = runtime.get("prompt_suffix")
+
+        # Apply prompt modification
+        updated_messages = messages.copy()
+        if prompt_suffix and updated_messages:
+            if updated_messages[0].get("role") == "system":
+                updated_messages[0]["content"] += " " + prompt_suffix
+
+        return {
+            "model": model,
+            "messages": updated_messages,
+            "temperature": runtime.get("temperature", 0.7),
+            "top_p": runtime.get("top_p", 1.0),
+            "aegis": result,  # keep full result for inspection/debug
+        }
