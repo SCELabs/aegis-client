@@ -1,31 +1,48 @@
 # Aegis Client
 
-Public Python client for the hosted Aegis AI stability API.
+Stabilize AI systems at runtime with one call.
 
-Aegis is a runtime control layer for AI systems. It analyzes instability such as drift, disagreement, or coordination failure and returns stabilization guidance you can apply at runtime, including prompt shaping, temperature adjustment, and coordination rules.
-
-This client is intentionally thin. It does not implement backend logic locally. It sends requests to the hosted Aegis API and returns structured results.
+Aegis is a lightweight middleware layer that improves consistency, coordination, and control in AI systems by automatically adjusting prompts and runtime parameters.
 
 ---
 
-## What Aegis Does
+## 10-second integration
 
-Aegis helps stabilize AI systems by returning:
+from aegis import AegisClient
 
-- status
-- summary
-- probable cause
-- recommended actions
-- runtime configuration
-- optional rewritten prompt guidance
+client = AegisClient(api_key="your_api_key")
+
+config = client.auto_openai_config(
+    model="gpt-4o",
+    messages=[
+        {"role": "system", "content": "You are a support system."},
+        {"role": "user", "content": "Handle this case."}
+    ],
+    symptoms=["agents_disagree"],
+    severity="medium",
+)
+
+# Drop into your OpenAI call
+response = openai.chat.completions.create(**config)
+
+---
+
+## What Aegis does
+
+Aegis analyzes instability and returns:
+
+- stabilized prompt
+- temperature adjustments
+- coordination improvements
+- runtime control signals
 
 Typical use cases:
 
-- single-agent prompt drift
-- inconsistent assistant behavior
+- inconsistent outputs
+- prompt drift
 - multi-agent disagreement
-- unstable workflow coordination
-- runtime intervention before failure compounds
+- unstable workflows
+- brittle decision systems
 
 ---
 
@@ -33,32 +50,24 @@ Typical use cases:
 
 pip install -e .
 
-Or install dependencies manually:
-
-pip install requests
-
 ---
 
 ## Environment
 
 cp .env.example .env
 
-Example values:
+Example:
 
 AEGIS_API_KEY=your_api_key_here  
 AEGIS_BASE_URL=http://127.0.0.1:8000
 
-Run backend locally in the separate backend repo:
-
-uvicorn app.main:app --reload
-
 ---
 
-## Quick Start
+## Core usage
 
 from aegis import AegisClient
 
-client = AegisClient(api_key="your_api_key")
+client = AegisClient()
 
 result = client.auto(
     system_type="multi_agent",
@@ -73,40 +82,24 @@ print(result["prompt"])
 
 ---
 
-## Client Methods
+## OpenAI-ready usage
 
-stabilize()
-
-result = client.stabilize(
-    system_type="single_agent",
-    base_prompt="You are a helpful assistant.",
-    symptoms=["instruction_drift"],
-    severity="low",
-)
-
-stabilize_with_runtime()
-
-result = client.stabilize_with_runtime(
-    system_type="single_agent",
-    base_prompt="You are a helpful assistant.",
-    symptoms=["inconsistent_tone"],
+config = client.auto_openai_config(
+    model="gpt-4o",
+    messages=[
+        {"role": "system", "content": "You are a support system."},
+        {"role": "user", "content": "Handle this case."}
+    ],
+    symptoms=["agents_disagree"],
     severity="medium",
-    policy="runtime_control",
 )
 
-auto()
-
-result = client.auto(
-    system_type="multi_agent",
-    base_prompt="You are a coordination layer for agents.",
-    symptoms=["agents_disagree", "handoff_instability"],
-    severity="high",
-    policy="multi_agent_alignment",
-)
+print(config["messages"])
+print(config["temperature"])
 
 ---
 
-## API Response Shape
+## API response (real example)
 
 {
   "status": "stable",
@@ -118,12 +111,7 @@ result = client.auto(
       "label": "Adjust system flexibility",
       "description": "Loosen overly rigid behavior enough to recover useful adaptability.",
       "expected_effect": "Less brittleness while preserving control.",
-      "intensity": "medium",
-      "runtime_targets": [
-        "relax hard constraints slightly",
-        "allow controlled exploration",
-        "widen acceptable response space"
-      ]
+      "intensity": "medium"
     }
   ],
   "confidence": 0.78,
@@ -131,43 +119,32 @@ result = client.auto(
     "temperature": 0.3,
     "top_p": 1.0,
     "prompt_suffix": "Allow explicit exceptions only when they are directly supported by the case."
-  },
-  "prompt": "Full prompt guidance returned by the API."
+  }
 }
 
 ---
 
-## Demo Scripts
+## Demo
 
-python examples/runtime_gateway_demo.py
-
-python examples/multi_agent_drift_demo.py
-
----
-
-## Local Development
-
-pip install -e .
-
-python -m unittest discover -s tests -v
+python examples/runtime_gateway_demo.py  
+python examples/multi_agent_drift_demo.py  
 
 ---
 
-## Design Principles
+## Design
+
+Aegis is:
 
 - thin
-- public-safe
 - backend-driven
-- easy to integrate
+- runtime-focused
 - production-oriented
 
-This client does NOT:
+It does NOT:
 
 - reimplement backend logic
 - expose SCE internals
-- run local optimization or policy logic
-
-The backend remains the source of truth.
+- run local optimization
 
 ---
 
