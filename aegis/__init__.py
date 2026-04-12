@@ -1,3 +1,3 @@
-from .client import AegisClient
+from .client import AegisClient, AsyncAegisClient
 
-__all__ = ["AegisClient"]
+__all__ = ["AegisClient", "AsyncAegisClient"]
