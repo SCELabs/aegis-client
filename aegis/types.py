@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, TypedDict
+from typing import Any, Dict, List, TypedDict
 
 
 class RuntimeConfig(TypedDict, total=False):
@@ -7,11 +7,20 @@ class RuntimeConfig(TypedDict, total=False):
     prompt_suffix: str
 
 
+class Action(TypedDict, total=False):
+    type: str
+    label: str
+    description: str
+    expected_effect: str
+    intensity: str
+    runtime_targets: List[str]
+
+
 class StabilizeResponse(TypedDict, total=False):
     status: str
     summary: str
     cause: str
-    actions: List[str]
+    actions: List[Action]
     confidence: float
     runtime_config: RuntimeConfig
     prompt: str

@@ -48,7 +48,7 @@ Example values:
 AEGIS_API_KEY=your_api_key_here  
 AEGIS_BASE_URL=http://127.0.0.1:8000
 
-Run backend locally (separate repo):
+Run backend locally in the separate backend repo:
 
 uvicorn app.main:app --reload
 
@@ -110,16 +110,29 @@ result = client.auto(
 
 {
   "status": "stable",
-  "summary": "System stabilized.",
-  "cause": "Drift detected in coordination flow.",
-  "actions": ["reduce_temperature", "tighten_prompt_scope"],
-  "confidence": 0.82,
+  "summary": "Your system is stable under the recommended intervention, but it is still close to a watch-state boundary.",
+  "cause": "The system appeared overly rigid and required controlled flexibility.",
+  "actions": [
+    {
+      "type": "adjust_flexibility",
+      "label": "Adjust system flexibility",
+      "description": "Loosen overly rigid behavior enough to recover useful adaptability.",
+      "expected_effect": "Less brittleness while preserving control.",
+      "intensity": "medium",
+      "runtime_targets": [
+        "relax hard constraints slightly",
+        "allow controlled exploration",
+        "widen acceptable response space"
+      ]
+    }
+  ],
+  "confidence": 0.78,
   "runtime_config": {
-    "temperature": 0.6,
-    "top_p": 0.9,
-    "prompt_suffix": "Be more consistent and avoid speculative actions."
+    "temperature": 0.3,
+    "top_p": 1.0,
+    "prompt_suffix": "Allow explicit exceptions only when they are directly supported by the case."
   },
-  "prompt": "Optional rewritten prompt guidance"
+  "prompt": "Full prompt guidance returned by the API."
 }
 
 ---
@@ -153,6 +166,8 @@ This client does NOT:
 - reimplement backend logic
 - expose SCE internals
 - run local optimization or policy logic
+
+The backend remains the source of truth.
 
 ---
 
