@@ -234,6 +234,22 @@ It does NOT:
 
 ---
 
+## 🚀 Demo: Multi-Agent Workflow Stabilization
+
+See Aegis applied to a realistic multi-agent system:
+
+https://github.com/SCELabs/aegis-agent-workflow-demo
+
+This demo shows:
+- same final accuracy
+- fewer retries and replans
+- lower cost
+- improved execution efficiency
+
+Run it locally to see Aegis improve workflow behavior without modifying the agents.
+
+---
+
 ## License
 
 MIT
