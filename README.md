@@ -163,7 +163,7 @@ Improve consistency and make them more usable.
 
 ## 📦 Installation
 
-    pip install aegis-ai
+    pip install scelabs-aegis
 
 ---
 
