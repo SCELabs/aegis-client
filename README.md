@@ -4,6 +4,8 @@ Turn unstable AI into reliable systems.
 
 Aegis is a drop-in control layer that stabilizes AI outputs at runtime — no retraining or prompt rewrites required.
 
+pip install scelabs-aegis
+
 ---
 
 ## ⚡ Example: Real Workflow Impact
@@ -69,6 +71,57 @@ That’s it.
 
 ---
 
+## 📦 Installation
+
+    pip install scelabs-aegis
+
+---
+
+## 🔑 Onboarding
+
+Create an Aegis account and get an API key.
+
+### 1. Request an API key
+
+    curl -X POST "$AEGIS_URL/v1/onboard" \
+      -H "Content-Type: application/json" \
+      -d '{"account_name":"My Team","email":"you@example.com"}'
+
+You will receive:
+
+- account_id  
+- email  
+- plan  
+- monthly_request_limit  
+- api_key  
+- ready-to-run examples  
+
+Save the `api_key`.
+
+---
+
+### 2. Set your API key
+
+    export AEGIS_API_KEY=your_api_key
+
+Optional:
+
+    export AEGIS_URL=https://your-aegis-url
+
+---
+
+### 3. You're ready
+
+    from aegis import AegisClient
+    import os
+
+    client = AegisClient(
+        api_key=os.environ["AEGIS_API_KEY"],
+        base_url=os.getenv("AEGIS_URL"),
+    )
+
+---
+
 ## 🧠 Local / Smaller Model Example
 
 Use smaller or local models — Aegis makes them reliable.
@@ -82,7 +135,7 @@ With Aegis:
 
     response = openai.chat.completions.create(
         **client.auto_openai_config(
-            model="gpt-3.5-turbo",  # or local / smaller model
+            model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": "Provide clear, structured reasoning."},
                 {"role": "user", "content": "Explain this document."}
@@ -105,7 +158,7 @@ Use cheaper or local models without sacrificing reliability.
 Ensure your AI uses the correct tools.
 
 Without Aegis:  
-Model selects the wrong tool or responds without using one ❌  
+Model selects the wrong tool or responds without using one  
 
 With Aegis:
 
@@ -191,21 +244,13 @@ Improve consistency and make them more usable.
 
 ---
 
-## 📦 Installation
-
-    pip install scelabs-aegis
-
----
-
-## 🔑 Setup
+## ⚙️ Environment Setup
 
     export AEGIS_API_KEY=your_api_key
 
----
+Optional:
 
-## ⚙️ Optional: Local / Dev Config
-
-    AEGIS_BASE_URL=http://127.0.0.1:8000
+    export AEGIS_BASE_URL=http://127.0.0.1:8000
 
 ---
 
