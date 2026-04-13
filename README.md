@@ -6,15 +6,45 @@ Aegis is a drop-in control layer that stabilizes AI outputs at runtime — no re
 
 ---
 
-## ⚡ Example
+## ⚡ Example: Real Workflow Impact
 
-Without Aegis:  
-"I understand the policy is 30 days, but we should approve this refund to maintain customer satisfaction." ❌  
+This demo runs the same multi-agent workflow twice:
 
-With Aegis:  
-"Deny the refund based on the 30-day policy, but offer store credit as an alternative." ✅  
+- once as baseline  
+- once with Aegis applied at runtime  
 
-Same model. Same prompt. Aegis makes it reliable.
+Both reach the same correct final answers.
+
+The difference is how efficiently they get there.
+
+### 📊 Results
+
+| Metric | Baseline | Aegis |
+|-------|---------|-------|
+| Final Accuracy | 1.0 | 1.0 |
+| Lane Accuracy | 0.83 | 1.0 |
+| Efficiency | 0.82 | 1.0 |
+| LLM Calls | 44 | 32 |
+| Verifier Calls | 11 | 8 |
+| Replans | 5 | 2 |
+| Cost | $0.00583 | $0.003946 |
+
+### 🔥 What changed
+
+- Same outcomes  
+- Fewer steps  
+- Fewer retries  
+- Better routing  
+- Lower cost  
+
+### 🧠 Takeaway
+
+Aegis does not change what your system decides.
+
+It changes how your system behaves while deciding.
+
+Same system.  
+Better execution.
 
 ---
 
