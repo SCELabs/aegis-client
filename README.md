@@ -125,6 +125,8 @@ Better execution.
 
 ---
 
+---
+
 ## 🧠 Local / Smaller Model Example
 
 Aegis makes smaller or local models usable in real systems.
@@ -270,6 +272,9 @@ Make them reliable and usable.
 ```
 pip install scelabs-aegis
 ```
+
+After installing, request an API key through the onboarding endpoint and set `AEGIS_API_KEY` before making calls.
+
 
 ---
 
