@@ -1,19 +1,31 @@
 [project]
 name = "scelabs-aegis"
-version = "0.1.0"
-description = "Public Python client for the Aegis AI stability API"
+version = "0.2.0"
+description = "Runtime control layer for stabilizing AI systems and improving behavior without retraining"
 authors = [
-  { name = "SCELabs" }
+{ name = "SCELabs" }
 ]
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
-  "httpx>=0.27.0",
+"httpx>=0.27.0",
+"requests>=2.31.0",
 ]
 license = "MIT"
-keywords = ["ai", "llm", "stability", "runtime", "agent", "aegis"]
+keywords = [
+"ai",
+"llm",
+"agents",
+"runtime",
+"stability",
+"reliability",
+"control",
+"automation",
+"aegis",
+]
 classifiers = [
-  "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3 :: Only",
-  "Operating System :: OS Independent",
+"Programming Language :: Python :: 3",
+"Programming Language :: Python :: 3 :: Only",
+"License :: OSI Approved :: MIT License",
+"Operating System :: OS Independent",
 ]
