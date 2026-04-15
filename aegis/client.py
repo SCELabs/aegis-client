@@ -201,8 +201,11 @@ class AegisClient:
             metadata=metadata,
         )
 
-        return plan.for_openai(model=model, messages=messages)
-
+        # 🔥 compatibility: allow dict or AegisPlan
+        if isinstance(plan, dict):
+            plan = AegisPlan(plan)
+            
+        return plan.for_openai(model=model, messages=messages) 
 
 class AsyncAegisClient:
     def __init__(
@@ -222,7 +225,7 @@ class AsyncAegisClient:
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
         return headers
-
+    
     async def _post(self, payload: StabilizeRequest) -> StabilizeResponse:
         url = f"{self.base_url}/v1/stabilize"
 
@@ -237,3 +240,81 @@ class AsyncAegisClient:
             raise AegisAPIError(response.text, status_code=response.status_code)
 
         return response.json()
+    
+    async def stabilize(
+        self,
+        *,
+        system_type: str,
+        base_prompt: str,
+        symptoms: list[str],
+        severity: str,
+        policy: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ):
+        payload: StabilizeRequest = {
+            "system_type": system_type,
+            "base_prompt": base_prompt,
+            "symptoms": symptoms,
+            "severity": severity,
+        }
+
+        if policy is not None:
+            payload["policy"] = policy
+        if metadata is not None:
+            payload["metadata"] = metadata
+
+        return await self._post(payload)
+    
+    async def auto(
+        self,
+        *,
+        system_type: str,
+        base_prompt: str,
+        symptoms: list[str],
+        severity: str,
+        policy: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ):
+        payload: StabilizeRequest = {
+            "system_type": system_type,
+            "base_prompt": base_prompt,
+            "symptoms": symptoms,
+            "severity": severity,
+            "include_runtime": True,
+        }
+
+        if policy is not None:
+            payload["policy"] = policy
+        if metadata is not None:
+            payload["metadata"] = metadata
+
+        result = await self._post(payload)
+        return AegisPlan(result)
+    
+    async def auto_openai_config(
+        self,
+        *,
+        model: str,
+        messages: list[dict],
+        symptoms: list[str],
+        severity: str,
+        policy: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        system_type: str = "multi_agent",
+    ):
+
+        plan = await self.auto(
+            system_type=system_type,
+            base_prompt=messages[0]["content"] if messages and messages[0]["role"] == "system" else "",
+            symptoms=symptoms,
+            severity=severity,
+            policy=policy,
+            metadata=metadata,
+        )
+
+        if isinstance(plan, dict):
+            plan = AegisPlan(plan)
+
+        return plan.for_openai(model=model, messages=messages)
+    
+    

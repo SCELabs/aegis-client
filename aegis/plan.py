@@ -2,6 +2,20 @@ class AegisPlan:
     def __init__(self, data: dict):
         self._data = data
 
+        # backward compatibility: lift legacy runtime_config into controls
+        runtime_config = self._data.get("runtime_config", {}) or {}
+        controls = self._data.setdefault("controls", {})
+
+        generation = controls.setdefault("generation", {})
+        prompt = controls.setdefault("prompt", {})
+
+        if "temperature" in runtime_config and "temperature" not in generation:
+            generation["temperature"] = runtime_config["temperature"]
+        if "top_p" in runtime_config and "top_p" not in generation:
+            generation["top_p"] = runtime_config["top_p"]
+        if "prompt_suffix" in runtime_config and "suffix" not in prompt:
+            prompt["suffix"] = runtime_config["prompt_suffix"]
+
     # --- core access ---
     @property
     def raw(self):
@@ -50,3 +64,10 @@ class AegisPlan:
             "prompt": (controls.get("prompt", {}) or {}).get("full_prompt"),
             "temperature": (controls.get("generation", {}) or {}).get("temperature"),
         }
+
+    # --- backwards compatibility ---
+    def __getitem__(self, key):
+        return self._data[key]
+
+    def get(self, key, default=None):
+        return self._data.get(key, default)
