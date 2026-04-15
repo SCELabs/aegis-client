@@ -313,7 +313,7 @@ client = AegisClient(
 
 ---
 
-## 🧪 Demos
+## 🧪 Examples
 
 ```
 python examples/openai_basic.py
