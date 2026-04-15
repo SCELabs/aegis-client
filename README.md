@@ -4,7 +4,82 @@ Turn unstable AI into reliable systems.
 
 Aegis is a runtime control layer that predicts instability and returns control plans to stabilize AI behavior — no retraining or prompt rewrites required.
 
+```
 pip install scelabs-aegis
+```
+
+---
+
+## 🚀 10-second integration
+
+```python
+from aegis import AegisClient
+import openai
+
+client = AegisClient()
+
+plan = client.auto(
+    system_type="multi_agent",
+    base_prompt="You are a support system.",
+    symptoms=["agents_disagree"],
+    severity="medium",
+)
+
+response = openai.chat.completions.create(
+    **plan.for_openai(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": "You are a support system."},
+            {"role": "user", "content": "Handle this case."}
+        ],
+    )
+)
+```
+
+That’s it.
+
+---
+
+## 🧠 What just happened
+
+Aegis analyzed your system and returned a control plan:
+
+* adjusted generation behavior (temperature, top_p)
+* stabilized prompt behavior
+* improved coordination
+* reduced variability
+
+You didn’t rewrite anything.
+
+---
+
+## 🔌 Works everywhere
+
+Aegis plugs into any AI system.
+
+### OpenAI
+
+```python
+plan.for_openai(...)
+```
+
+### LangChain
+
+```python
+cfg = plan.for_langchain(messages=messages)
+```
+
+### LangGraph
+
+```python
+state = plan.apply_to_state(state)
+```
+
+### HuggingFace (local / small models)
+
+```python
+cfg = plan.for_huggingface(prompt="Handle this clearly")
+```
 
 ---
 
@@ -50,52 +125,43 @@ Better execution.
 
 ---
 
-## 🚀 10-second integration
+## 🧠 Local / Smaller Model Example
 
-```
+Aegis makes smaller or local models usable in real systems.
+
+```python
+from transformers import pipeline
 from aegis import AegisClient
-import openai
 
-client = AegisClient(api_key="your_api_key")
+client = AegisClient()
+pipe = pipeline("text-generation", model="gpt2")
 
 plan = client.auto(
-    system_type="multi_agent",
-    base_prompt="You are a support system.",
-    symptoms=["agents_disagree"],
+    system_type="single_agent",
+    base_prompt="Provide clear reasoning.",
+    symptoms=["inconsistent_outputs"],
     severity="medium",
 )
 
-response = openai.chat.completions.create(
-    **plan.for_openai(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": "You are a support system."},
-            {"role": "user", "content": "Handle this case."}
-        ],
-    )
+cfg = plan.for_huggingface(
+    prompt="Explain this clearly and step by step."
 )
+
+output = pipe(cfg["prompt"], **cfg["model_kwargs"])
+print(output)
 ```
 
-That’s it.
+Result:
 
----
-
-## 🧠 What just happened
-
-Aegis analyzed your system and returned a control plan:
-
-* adjusted temperature
-* stabilized prompt behavior
-* improved coordination
-* reduced variability
-
-You didn’t rewrite anything.
+* clearer reasoning
+* more consistent outputs
+* fewer retries
 
 ---
 
 ## 🧠 Advanced usage (Plan API)
 
-```
+```python
 plan = client.plan(
     system_type="single_agent",
     base_prompt="You are a support assistant.",
@@ -109,115 +175,11 @@ print(plan.controls)
 
 ---
 
-## 📦 Installation
+## 🛠 Tool Control Example
 
-```
-pip install scelabs-aegis
-```
+Ensure your AI uses tools correctly.
 
----
-
-## 🔑 Onboarding
-
-Create an Aegis account and get an API key.
-
-### 1. Request an API key
-
-```
-curl -X POST "$AEGIS_URL/v1/onboard" \
-  -H "Content-Type: application/json" \
-  -d '{"account_name":"My Team","email":"you@example.com"}'
-```
-
-You will receive:
-
-* account_id
-* email
-* plan
-* monthly_request_limit
-* api_key
-
----
-
-### 2. Set your API key
-
-```
-export AEGIS_API_KEY=your_api_key
-```
-
-Optional:
-
-```
-export AEGIS_URL=https://your-aegis-url
-```
-
----
-
-### 3. You're ready
-
-```
-from aegis import AegisClient
-import os
-
-client = AegisClient(
-    api_key=os.environ["AEGIS_API_KEY"],
-    base_url=os.getenv("AEGIS_URL"),
-)
-```
-
----
-
-## 🧠 Local / Smaller Model Example
-
-Use smaller or local models — Aegis makes them reliable.
-
-Without Aegis:
-
-* inconsistent reasoning
-* unstable outputs
-* poor structure
-
-With Aegis:
-
-```
-plan = client.auto(
-    system_type="single_agent",
-    base_prompt="Provide clear reasoning.",
-    symptoms=["inconsistent_outputs"],
-    severity="medium",
-)
-
-response = openai.chat.completions.create(
-    **plan.for_openai(
-        model="gpt-3.5-turbo",
-        messages=[
-            {"role": "system", "content": "Provide clear reasoning."},
-            {"role": "user", "content": "Explain this document."}
-        ],
-    )
-)
-```
-
-Result:
-
-* clearer reasoning
-* more consistent outputs
-* fewer retries
-
----
-
-## 🛠 Tool Calling Example
-
-Ensure your AI uses the correct tools.
-
-Without Aegis:
-
-* wrong tool selection
-* skipped tools
-
-With Aegis:
-
-```
+```python
 plan = client.auto(
     system_type="multi_agent",
     base_prompt="You must use tools correctly.",
@@ -225,22 +187,14 @@ plan = client.auto(
     severity="medium",
 )
 
-response = openai.chat.completions.create(
-    **plan.for_openai(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": "You must use tools."},
-            {"role": "user", "content": "Book a flight."}
-        ],
-    )
-)
+print(plan.tool_config())
 ```
 
 Result:
 
 * correct tool usage
-* higher task success
 * fewer failures
+* higher task success
 
 ---
 
@@ -251,7 +205,8 @@ Aegis analyzes instability and returns a control plan that adjusts:
 * prompts
 * generation behavior
 * coordination rules
-* runtime control signals
+* validation and retry behavior
+* tool usage
 
 Result:
 
@@ -310,16 +265,66 @@ Make them reliable and usable.
 
 ---
 
-## 🧪 Demos
+## 📦 Installation
 
 ```
-python examples/runtime_gateway_demo.py
-python examples/multi_agent_drift_demo.py
+pip install scelabs-aegis
 ```
 
 ---
 
-## 🚀 Demo: Multi-Agent Workflow Stabilization
+## 🔑 Onboarding
+
+### 1. Request an API key
+
+```
+curl -X POST "$AEGIS_URL/v1/onboard" \
+  -H "Content-Type: application/json" \
+  -d '{"account_name":"My Team","email":"you@example.com"}'
+```
+
+---
+
+### 2. Set your API key
+
+```
+export AEGIS_API_KEY=your_api_key
+```
+
+Optional:
+
+```
+export AEGIS_URL=https://your-aegis-url
+```
+
+---
+
+### 3. You're ready
+
+```python
+from aegis import AegisClient
+import os
+
+client = AegisClient(
+    api_key=os.environ["AEGIS_API_KEY"],
+    base_url=os.getenv("AEGIS_URL"),
+)
+```
+
+---
+
+## 🧪 Demos
+
+```
+python examples/openai_basic.py
+python examples/langchain_basic.py
+python examples/langgraph_basic.py
+python examples/huggingface_basic.py
+```
+
+---
+
+## 🚀 Full Demo (Multi-Agent Workflow)
 
 https://github.com/SCELabs/aegis-agent-workflow-demo
 
