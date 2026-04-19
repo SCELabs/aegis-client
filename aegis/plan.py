@@ -1,3 +1,5 @@
+"""Legacy compatibility plan interface. Prefer AegisClient.auto().<scope>() returning AegisResult."""
+
 class AegisPlan:
     def __init__(self, data: dict):
         self._data = data
