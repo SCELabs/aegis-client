@@ -6,20 +6,20 @@ __pycache__/
 
 # Virtual env
 .venv/
-env/
+venv/
 
 # Env files
 .env
 
-# Build
+# Build artifacts
 dist/
 build/
 *.egg-info/
 
-# IDE
-.vscode/
-.idea/
+# Patch artifacts
+*.orig
+*.rej
 
-# OS
+# OS junk
 .DS_Store
 Thumbs.db
