@@ -56,7 +56,7 @@ pip install scelabs-aegis
 ### Hosted (recommended)
 
 ```bash
-curl -X POST https://your-backend-url/v1/onboard \
+curl -X POST https://aegis-backend-production-4b47.up.railway.app/v1/onboard \
   -H "Content-Type: application/json" \
   -d '{"email": "you@example.com"}'
 ```
