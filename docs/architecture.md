@@ -4,9 +4,9 @@
 
 Aegis is a **runtime control layer** for AI systems.
 
-It stabilizes behavior at execution time by observing system outputs and applying minimal corrective actions.
+It stabilizes behavior at execution time by observing system inputs and returning structured control decisions that guide how your system should operate.
 
-Aegis consists of:
+Aegis consists of three parts:
 
 1. **Client SDK** (this repo)
 2. **Backend Control Layer** (Aegis API)
@@ -16,26 +16,37 @@ Aegis consists of:
 
 ## Stack Position
 
-Aegis sits **between your system and execution**:
+Aegis sits **between your system logic and execution**:
 
-```id="stack_diagram"
-/Your App / Agent / Pipeline
+```
+Your App / Agent / Pipeline
             ↓
           Aegis
             ↓
      LLM / RAG / Tools
 ```
 
-It does not replace your system.
-It stabilizes how your system behaves.
+Aegis does not replace your system.
+It stabilizes how your system behaves at runtime.
+
+---
+
+## Core Principle
+
+Aegis separates:
+
+* **Decision layer** → what should happen
+* **Execution layer** → your model, tools, or system
+
+Aegis only operates in the decision layer.
 
 ---
 
 ## Client SDK
 
-The client provides a **scope-first interface**:
+The client exposes a **scope-first interface**:
 
-```python id="sdk_usage"
+```python
 client.auto().llm(...)
 client.auto().rag(...)
 client.auto().step(...)
@@ -43,91 +54,70 @@ client.auto().step(...)
 
 Responsibilities:
 
-* define scope-based calls
-* construct request payloads
-* send requests to backend
+* construct scope-based requests
+* send requests to the backend
 * normalize responses into `AegisResult`
 
-The client **does not implement control logic**.
+The client does **not** implement control logic.
 
 ---
 
 ## Backend Control Layer
 
-The backend is the **execution engine** of Aegis.
+The backend is the **control engine** of Aegis.
 
 Responsibilities:
 
 * interpret instability signals
-* map symptoms → system state
+* evaluate system state
 * select corrective actions
-* generate runtime control outputs
+* produce runtime control outputs
 
-### Verified public routes
+### Public API (current)
 
-```id="backend_routes"
-/v1/stabilize
-/v1/plan
+```
+POST /v1/auto/llm
+POST /v1/auto/rag
+POST /v1/auto/step
 ```
 
-* `/v1/stabilize` → primary runtime stabilization endpoint
-* `/v1/plan` → legacy / advanced planning interface
+These are first-class endpoints.
+There is no longer a dependency on `/v1/stabilize`.
 
 ---
 
-## Important: Scope Interface vs Backend Reality
+## Request Flow
 
-The SDK exposes:
-
-```id="sdk_scopes"
-llm
-rag
-step
 ```
-
-However, these are **not currently separate backend endpoints**.
-
-Instead:
-
-* the SDK **maps all scopes to the backend**
-* execution is handled by `/v1/stabilize`
-
----
-
-## Request Flow (Actual Behavior)
-
-```id="flow_real"
 client.auto().llm(...)
         ↓
-client builds scope payload
+build scope request
         ↓
-POST /v1/auto/llm   (attempt)
+POST /v1/auto/llm
         ↓
-fallback → POST /v1/stabilize
+backend evaluates state
         ↓
-backend executes stabilization
+returns control decisions
         ↓
-response mapped to AegisResult
+client maps to AegisResult
 ```
 
-The `/v1/auto/<scope>` routes are **not guaranteed to exist**.
-
-The client automatically falls back to `/v1/stabilize`.
+There is no fallback layer in the current architecture.
 
 ---
 
 ## Control Model
 
-Aegis operates using three inputs:
+Aegis operates on three core inputs:
 
 ### Symptoms
 
-Describe instability:
+Describe instability in the system:
 
-* `"inconsistent_outputs"`
-* `"unstable_workflow"`
-* `"agents_disagree"`
-* `"retrieval_drift"`
+* "inconsistent_outputs"
+* "unstable_workflow"
+* "retrieval_drift"
+* "agents_disagree"
 
 ---
 
@@ -135,9 +125,9 @@ Describe instability:
 
 Defines intervention strength:
 
-* `"low"`
-* `"medium"`
-* `"high"`
+* "low"
+* "medium"
+* "high"
 
 ---
 
@@ -149,47 +139,60 @@ Defines where control is applied:
 * `rag` → retrieval + generation
 * `step` → workflow / coordination
 
-Scope is a **client-side abstraction**, not a backend route boundary.
+Scope is now both:
+
+* a client abstraction
+* a backend route boundary
 
 ---
 
 ## Backend Execution Model
 
-At `/v1/stabilize`, the backend:
+For each scope route, the backend:
 
-1. Converts input → internal system state
-2. Evaluates structural instability
-3. Selects corrective plan
-4. Maps plan → actions
-5. Generates runtime controls
+1. converts input into internal state
+2. evaluates system stability
+3. selects a corrective plan
+4. maps plan → actions
+5. generates runtime controls
 
 The response includes:
 
-* `actions`
-* `runtime_config`
-* `confidence`
-* `summary`
-* optional prompt modifications
+* actions
+* explanation
+* runtime_config
+* controlled_prompt (if applicable)
+* trace
+* metrics
 
 ---
 
-## Result Normalization
+## Result Model
 
-The client converts backend responses into:
+All responses are normalized into:
 
-```id="result_model"
+```
 AegisResult
 ```
 
-Which exposes:
+Key fields:
 
-* `final_answer`
 * `actions`
-* `trace`
+* `trace` (list of decision events)
 * `metrics`
-* `scope_data`
 * `used_fallback`
 * `explanation`
+* `scope`
+* `scope_data`
+
+### Important
+
+Aegis returns **control outputs**, not model outputs.
+
+That means:
+
+* `final_answer` may be null
+* `output` may be null
 
 ---
 
@@ -199,58 +202,54 @@ Aegis is fully inspectable.
 
 You can analyze:
 
-```python id="debug_tools"
+```python
 result.actions
 result.trace
 result.metrics
-result.debug_summary()
+result.scope_data
 ```
 
 This allows:
 
 * debugging instability
 * understanding decisions
-* integrating adaptive control logic
+* building adaptive systems
 
 ---
 
-## Compatibility Model
+## Execution Responsibility
 
-Aegis is designed for **forward compatibility**.
+Aegis does not execute:
 
-### SDK (stable interface)
+* LLM calls
+* tool calls
+* workflows
 
-```id="sdk_stable"
-client.auto().<scope>()
-```
+Your system executes using:
 
-### Backend (current reality)
-
-```id="backend_current"
-/v1/stabilize
-```
-
-The SDK abstracts backend differences so integrations remain stable.
+* `scope_data.runtime_config`
+* `scope_data.controlled_prompt`
+* returned actions
 
 ---
 
-## Key Design Constraints
+## Design Constraints
 
-### 1. No System Redesign
+### 1. No System Replacement
 
-Aegis wraps your existing system.
+Aegis wraps your system, it does not replace it.
 
 ---
 
 ### 2. Minimal Intervention
 
-Only the smallest necessary actions are applied.
+Only the smallest necessary corrections are applied.
 
 ---
 
 ### 3. Runtime Only
 
-No training, fine-tuning, or persistent system changes.
+No training, fine-tuning, or persistent modification.
 
 ---
 
@@ -259,7 +258,7 @@ No training, fine-tuning, or persistent system changes.
 Works with:
 
 * OpenAI
-* local LLMs
+* local models
 * any framework
 
 ---
@@ -269,8 +268,8 @@ Works with:
 Aegis is not:
 
 * a model
-* a replacement for your pipeline
 * a workflow engine
+* a replacement for your system
 
 ---
 
@@ -278,25 +277,23 @@ Aegis is not:
 
 Aegis is:
 
-→ a **runtime stabilization layer for AI systems**
+→ a **runtime control layer for AI systems**
 
 ---
 
-## Future Direction
+## Evolution Direction
 
-The architecture is evolving toward:
+The architecture now supports:
 
-* true scope-native backend endpoints
+* scope-native backend endpoints
+* structured control outputs
+* observable decision traces
+
+Future directions include:
+
 * multi-step workflow control
-* full system-level coordination
-
-But today, the stable surface is:
-
-* `llm`
-* `rag`
-* `step`
-
-mapped through `/v1/stabilize`.
+* deeper system coordination
+* richer trace analysis
 
 ---
 
@@ -304,8 +301,8 @@ mapped through `/v1/stabilize`.
 
 Aegis works by:
 
-* observing runtime instability
-* applying targeted corrections
-* returning structured outputs
+* observing instability
+* selecting minimal corrections
+* returning structured control decisions
 
-All without changing your system.
+All while keeping your system unchanged.

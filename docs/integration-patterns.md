@@ -2,295 +2,304 @@
 
 ## Overview
 
-Aegis is designed to be **inserted into existing systems**, not replace them.
+Aegis integrates as a **control layer** on top of your existing system.
 
-The core principle:
+You do not replace your model, RAG pipeline, or agent.
 
-> **Do not redesign your system. Wrap it.**
+You insert Aegis at the **execution boundary**, receive control decisions, and apply them before running your system.
 
 ---
 
-## Pattern 1: Direct LLM Calls
+## Core Pattern
 
-### Before
+All integrations follow the same structure:
 
-```python id="before_llm"
-response = model.invoke(prompt)
+```python id="z9k2x1"
+result = client.auto().<scope>(...)
+
+# extract control
+runtime_config = result.scope_data.get("runtime_config")
+controlled_prompt = result.scope_data.get("controlled_prompt")
+
+# execute your system using control
 ```
 
 ---
 
-### After
+## Pattern 1: LLM Integration
 
-```python id="after_llm"
+### Goal
+
+Stabilize a direct model call.
+
+---
+
+### Example
+
+```python id="x3p7n4"
 result = client.auto().llm(
-    base_prompt="You are a careful assistant.",
-    input=prompt,
+    base_prompt="You are a helpful assistant.",
+    input={"user_query": "Explain black holes simply."},
     symptoms=["inconsistent_outputs"],
     severity="medium",
 )
 
-response = result.final_answer
+runtime_config = result.scope_data.get("runtime_config", {})
+controlled_prompt = result.scope_data.get("controlled_prompt")
+
+response = openai.chat.completions.create(
+    model="gpt-4",
+    messages=[{"role": "user", "content": controlled_prompt}],
+    temperature=runtime_config.get("temperature", 0.7),
+    top_p=runtime_config.get("top_p", 1.0),
+)
+
+print(response)
 ```
 
 ---
 
-### When to use
+### Where Aegis helps
 
-* unstable outputs
-* formatting inconsistencies
-* reasoning drift
-
----
-
-## Pattern 2: RAG Pipelines
-
-### Before
-
-```python id="before_rag"
-documents = retriever(query)
-response = model.invoke(documents)
-```
+* reduces randomness
+* enforces consistency
+* stabilizes prompt behavior
 
 ---
 
-### After
+## Pattern 2: RAG Integration
 
-```python id="after_rag"
+### Goal
+
+Stabilize retrieval + generation pipelines.
+
+---
+
+### Example
+
+```python id="y5m1d8"
 result = client.auto().rag(
-    query=query,
-    retrieved_context=documents,
+    query=user_query,
+    retrieved_context=chunks,
     symptoms=["retrieval_drift"],
     severity="medium",
 )
 
-response = result.final_answer
+scope_data = result.scope_data
+
+# use updated context or metadata if provided
+final_context = scope_data.get("final_chunks", chunks)
+
+prompt = build_prompt(user_query, final_context)
+
+response = model.generate(prompt)
 ```
 
 ---
 
-### When to use
+### Where Aegis helps
 
-* missing context
-* irrelevant retrieval
-* inconsistent answers
-
----
-
-## Pattern 3: Agent Step Stabilization
-
-### Before
-
-```python id="before_step"
-decision = executor.run(step_input)
-```
+* expands retrieval when needed
+* removes irrelevant chunks
+* improves grounding
 
 ---
 
-### After
+## Pattern 3: Step / Agent Integration
 
-```python id="after_step"
+### Goal
+
+Stabilize workflow or agent execution.
+
+---
+
+### Example
+
+```python id="r8k6v2"
 result = client.auto().step(
-    step_name="executor_step",
-    step_input=step_input,
+    step_name="planner",
+    step_input={
+        "task": "resolve support ticket",
+        "history": state.history,
+    },
     symptoms=["unstable_workflow"],
     severity="medium",
 )
 
-decision = result.final_answer
+# inspect control actions
+print(result.actions)
+
+# adjust your workflow behavior accordingly
+state = apply_controls(state, result)
+```
+
+---
+
+### Where Aegis helps
+
+* reduces loops
+* prevents duplicate actions
+* stabilizes coordination
+
+---
+
+## Pattern 4: Minimal Wrapper
+
+### Goal
+
+Drop Aegis into an existing system with minimal changes.
+
+---
+
+### Example
+
+```python id="w2n4f9"
+def stabilized_call(prompt):
+    result = client.auto().llm(
+        base_prompt=prompt,
+        symptoms=["inconsistent_outputs"],
+        severity="medium",
+    )
+
+    runtime_config = result.scope_data.get("runtime_config", {})
+    controlled_prompt = result.scope_data.get("controlled_prompt", prompt)
+
+    return model.generate(
+        controlled_prompt,
+        temperature=runtime_config.get("temperature", 0.7),
+    )
+```
+
+---
+
+## Pattern 5: Observability-First Integration
+
+### Goal
+
+Use Aegis for monitoring and debugging before enforcing changes.
+
+---
+
+### Example
+
+```python id="v1c8j6"
+result = client.auto().llm(
+    base_prompt=prompt,
+    symptoms=["inconsistent_outputs"],
+    severity="low",
+)
+
+print(result.trace)
+print(result.actions)
+print(result.explanation)
 ```
 
 ---
 
 ### When to use
 
-* retries / loops
-* coordination issues
-* multi-agent instability
-
----
-
-## Pattern 4: Multi-Agent Systems
-
-Aegis should be inserted at the **coordination boundary**.
-
-### Example
-
-```python id="multi_agent"
-result = client.auto().step(
-    step_name="coordinator",
-    step_input={
-        "agents": ["planner", "executor", "validator"],
-        "history": history,
-    },
-    symptoms=[
-        "agents_disagree",
-        "excessive_replans",
-        "duplicate_work",
-    ],
-    severity="medium",
-)
-```
-
----
-
-### What happens
-
-Aegis:
-
-* reduces retries
-* suppresses duplicate work
-* stabilizes termination
-
----
-
-## Pattern 5: Early Exit Optimization
-
-Use Aegis to stop unnecessary execution.
-
-```python id="early_exit_pattern"
-result = client.auto().llm(...)
-
-if not result.used_fallback:
-    return result.final_answer
-```
-
----
-
-### Effect
-
-* fewer model calls
-* faster execution
-* same correctness
-
----
-
-## Pattern 6: Observability Integration
-
-Use Aegis results for monitoring.
-
-```python id="logging_pattern"
-log = result.to_log_record()
-logger.info(log)
-```
-
----
-
-### Track
-
-* action count
-* fallback usage
-* confidence
-* trace depth
-
----
-
-## Pattern 7: Adaptive Systems
-
-Use Aegis output to guide behavior.
-
-```python id="adaptive_pattern"
-if result.metrics.get("confidence", 1.0) < 0.7:
-    run_validation_pass()
-```
-
----
-
-### Effect
-
-* dynamic system control
-* smarter pipelines
-* improved reliability
+* diagnosing instability
+* analyzing system behavior
+* validating control strategies
 
 ---
 
 ## Where to Insert Aegis
 
-| Layer              | Scope  |
-| ------------------ | ------ |
-| LLM call           | `llm`  |
-| Retrieval pipeline | `rag`  |
-| Agent step         | `step` |
-| Coordinator loop   | `step` |
+Best insertion points:
+
+* before LLM calls
+* after retrieval, before generation
+* at workflow step boundaries
+
+Avoid:
+
+* embedding inside every micro-step
+* placing inside low-level utility functions
 
 ---
 
-## Where NOT to Insert Aegis
+## Control vs Execution
 
-### ❌ Inside every function
+Aegis provides:
 
-Avoid over-wrapping.
+* control decisions
+* runtime configuration
+* observability
+
+Your system provides:
+
+* execution
+* model calls
+* tool calls
+* workflow state
 
 ---
 
-### ❌ Deep inside model logic
+## Common Mistakes
 
-Aegis works at boundaries, not internals.
+### Expecting Aegis to execute
+
+```python id="m5k2x8"
+# ❌ incorrect
+result = client.auto().llm(...)
+print(result.final_answer)
+```
 
 ---
 
-### ❌ Without symptoms
+### Ignoring control outputs
 
-```python id="bad_integration"
-# ❌ wrong
-client.auto().llm(base_prompt="...")
+```python id="n7p4v3"
+# ❌ incomplete
+result = client.auto().llm(...)
+```
 
+```python id="q2r8y1"
 # ✅ correct
-client.auto().llm(
-    base_prompt="...",
-    symptoms=["inconsistent_outputs"],
-    severity="medium",
-)
+runtime_config = result.scope_data.get("runtime_config")
+controlled_prompt = result.scope_data.get("controlled_prompt")
 ```
 
 ---
 
-## Best Practices
+### Overusing high severity
 
-### Use smallest effective scope
+```python id="k6j9p2"
+# ❌ too aggressive
+severity="high"
+```
 
-* don’t over-scale
-* target instability precisely
-
----
-
-### Keep integration simple
-
-Aegis should feel like a wrapper, not a rewrite.
-
----
-
-### Inspect results
-
-```python id="inspect_pattern"
-result.actions
-result.trace
+```python id="d3v7m1"
+# ✅ better default
+severity="medium"
 ```
 
 ---
 
-### Start with real problems
+## Integration Strategy
 
-Add Aegis where instability exists.
+Start simple:
 
----
-
-## Key Insight
-
-Aegis works best when:
-
-* a system already exists
-* inefficiencies or instability are present
-* behavior needs to be controlled, not rebuilt
+1. apply Aegis to one critical boundary
+2. observe trace and actions
+3. apply control outputs
+4. expand gradually
 
 ---
 
 ## Summary
 
-Integration is:
+Aegis integrates by:
 
-* minimal
-* non-invasive
-* scope-based
+* sitting above execution
+* returning control decisions
+* letting your system execute
 
-Aegis enhances your system without changing it.
+Use it to:
+
+* stabilize behavior
+* reduce variability
+* improve reliability
+
+without changing your core system.

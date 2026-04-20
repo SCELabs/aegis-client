@@ -2,300 +2,328 @@
 
 ## Overview
 
-All Aegis calls return an **`AegisResult`**.
+Every Aegis call returns an `AegisResult`.
 
-This is the primary interface for:
-
-* consuming outputs
-* understanding behavior
-* debugging system instability
-
-Aegis is designed to be **observable by default**.
+This object represents the **control decision output**, not the final execution of your system.
 
 ---
 
-## Basic Usage
+## Key Principle
 
-```python id="result_basic"
+Aegis returns:
+
+* what to change
+* how to stabilize
+* why the decision was made
+
+It does **not** return the executed model result.
+
+---
+
+## Structure
+
+```python id="a1v0z2"
 result = client.auto().llm(...)
-
-print(result.final_answer)
 ```
+
+Core fields:
+
+* `actions`
+* `trace`
+* `metrics`
+* `used_fallback`
+* `explanation`
+* `scope`
+* `scope_data`
+* `final_answer` (optional, often None)
+* `output` (optional, often None)
 
 ---
 
-## Core Fields
-
-### final_answer
-
-The stabilized output of the system.
-
-```python id="final_answer"
-print(result.final_answer)
-```
-
----
-
-### output
-
-The raw output returned by the backend.
-
-```python id="raw_output"
-print(result.output)
-```
-
----
+## Field Breakdown
 
 ### actions
 
-List of interventions Aegis applied.
+List of control interventions selected by Aegis.
 
-```python id="actions"
+```python id="9h2k1d"
 print(result.actions)
 ```
 
-Each action may include:
+Example:
 
-* `type`
-* `intensity`
-* `label`
-* `description`
+```json id="l3x8y1"
+[
+  {
+    "type": "reduce_variability",
+    "intensity": "medium",
+    "label": "Reduce output variability"
+  }
+]
+```
 
 ---
 
 ### trace
 
-Detailed execution trace.
+A list of decision events describing how Aegis evaluated the system.
 
-```python id="trace"
+```python id="7s4m0p"
 print(result.trace)
 ```
 
-Represents:
+Important:
 
-* observations
-* decisions
-* applied changes
+* always a **list**
+* each entry represents a decision step
+
+Example:
+
+```json id="z8q1v4"
+[
+  {
+    "scope": "llm",
+    "observation": {},
+    "decision": {},
+    "actions": [],
+    "fallback": {
+      "used_fallback": false
+    },
+    "changes": {},
+    "upstream": {}
+  }
+]
+```
 
 ---
 
 ### metrics
 
-Execution and behavior metrics.
+Runtime signals describing the control decision.
 
-```python id="metrics"
+```python id="k2p8n1"
 print(result.metrics)
 ```
 
-May include:
+Example:
 
-* confidence
-* performance indicators
-* before/after comparisons
-
----
-
-### explanation
-
-Human-readable summary of what Aegis did.
-
-```python id="explanation"
-print(result.explanation)
+```json id="m4t9w6"
+{
+  "action_count": 2
+}
 ```
 
 ---
 
 ### used_fallback
 
-Indicates if fallback behavior was triggered.
+Indicates whether fallback behavior was triggered.
 
-```python id="fallback"
+```python id="p5n2x0"
 print(result.used_fallback)
+```
+
+Expected:
+
+* `false` for normal operation
+
+---
+
+### explanation
+
+Human-readable summary of the decision.
+
+```python id="w1v9e7"
+print(result.explanation)
+```
+
+Example:
+
+```text
+Selected because it achieved the highest overall score.
 ```
 
 ---
 
 ### scope
 
-Which scope was executed:
+Indicates which control scope was used:
 
-```python id="scope"
-print(result.scope)  # llm / rag / step
+* `llm`
+* `rag`
+* `step`
+
+```python id="t8j3r5"
+print(result.scope)
 ```
 
 ---
 
 ### scope_data
 
-Scope-specific debug information.
+Scope-specific runtime data used to apply control.
 
-```python id="scope_data"
+```python id="y2c6d9"
 print(result.scope_data)
 ```
 
-Examples:
+Common contents:
 
-* RAG: retrieval metrics
-* Step: coordination signals
-* LLM: generation hints
+* `runtime_config`
+* `controlled_prompt`
+* scope-specific debug info
 
 ---
 
-## Helper Methods
+## LLM Scope Data
 
-### debug_summary()
+Typical fields:
 
-Quick summary of execution:
+```python id="g5r1n8"
+runtime_config = result.scope_data.get("runtime_config")
+controlled_prompt = result.scope_data.get("controlled_prompt")
+```
 
-```python id="debug_summary"
+Example:
+
+```json id="q9u4c2"
+{
+  "runtime_config": {
+    "temperature": 0.2,
+    "top_p": 0.8
+  },
+  "controlled_prompt": "You are a helpful assistant..."
+}
+```
+
+---
+
+## RAG Scope Data
+
+May include:
+
+* retrieval_expansion_triggered
+* final_chunks
+* removed_chunks
+* before_after_metrics
+
+```python id="v6n0b3"
+print(result.scope_data)
+```
+
+---
+
+## Step Scope Data
+
+Includes:
+
+* original step input
+* runtime decisions
+* coordination adjustments
+
+```python id="b3k7s1"
+print(result.scope_data)
+```
+
+---
+
+## final_answer and output
+
+These fields may be:
+
+```python id="n8d2x5"
+print(result.final_answer)
+print(result.output)
+```
+
+Important:
+
+* often `None`
+* not guaranteed to be populated
+
+---
+
+## Why They May Be Empty
+
+Aegis is a control layer.
+
+It does not:
+
+* execute your model
+* generate final outputs
+
+It provides the **instructions and configuration** for your system to execute.
+
+---
+
+## Correct Usage Pattern
+
+```python id="f1h8p6"
+result = client.auto().llm(...)
+
+runtime_config = result.scope_data.get("runtime_config")
+controlled_prompt = result.scope_data.get("controlled_prompt")
+
+# Use these in your model call
+```
+
+---
+
+## Debugging Helpers
+
+```python id="d7v4m2"
 print(result.debug_summary())
+print(result.to_dict())
 ```
 
-Example output:
+Recommended inspection order:
 
-```
-scope=llm actions=2 trace_steps=5 used_fallback=no
-```
-
----
-
-### to_dict()
-
-Convert result to dictionary:
-
-```python id="to_dict"
-data = result.to_dict()
-```
-
----
-
-### to_log_record()
-
-Structured logging format:
-
-```python id="to_log"
-log = result.to_log_record()
-```
-
----
-
-## How to Use the Result
-
-### 1. Use the output
-
-```python id="use_output"
-answer = result.final_answer
-```
-
----
-
-### 2. Inspect actions
-
-```python id="inspect_actions"
-for action in result.actions:
-    print(action["type"])
-```
-
----
-
-### 3. Analyze trace
-
-```python id="inspect_trace"
-for step in result.trace:
-    print(step)
-```
-
----
-
-### 4. Monitor behavior
-
-```python id="monitor_metrics"
-print(result.metrics)
-```
-
----
-
-## Common Patterns
-
-### Early exit (agent systems)
-
-```python id="early_exit"
-if not result.used_fallback:
-    return result.final_answer
-```
-
----
-
-### Adaptive control
-
-```python id="adaptive"
-if result.metrics.get("confidence", 1.0) < 0.7:
-    # trigger additional validation
-    pass
-```
-
----
-
-### Debugging instability
-
-```python id="debugging"
-print(result.explanation)
+```python id="c5r9z8"
 print(result.actions)
+print(result.explanation)
 print(result.trace)
+print(result.scope_data)
 ```
 
 ---
 
-## Important Notes
+## Common Mistakes
 
-### Not all fields are always populated
+### Expecting final output
 
-Depending on scope and backend response:
+```python id="x4n8j2"
+# ❌ incorrect
+print(result.final_answer)
+```
 
-* some fields may be empty
-* `scope_data` varies per use case
+### Ignoring scope_data
 
----
+```python id="u9k3p7"
+# ❌ incomplete usage
+result = client.auto().llm(...)
+```
 
-### `final_answer` vs `output`
-
-* `final_answer` → cleaned / stable output
-* `output` → raw backend result
-
----
-
-### Observability is intentional
-
-Aegis exposes internal decisions so you can:
-
-* trust the system
-* debug issues
-* build adaptive logic
-
----
-
-## What AegisResult Represents
-
-It is not just a response.
-
-It is:
-
-→ a **structured record of system stabilization**
+```python id="r2v6q1"
+# ✅ correct
+runtime_config = result.scope_data.get("runtime_config")
+controlled_prompt = result.scope_data.get("controlled_prompt")
+```
 
 ---
 
 ## Summary
 
-`AegisResult` provides:
+`AegisResult` gives you:
 
-* output
-* actions
-* trace
-* metrics
-* explanation
+* control decisions
+* runtime configuration
+* observability
+* structured trace
 
-Everything needed to:
+You use it to:
 
-* use results
-* understand behavior
-* improve systems
+* stabilize your system
+* guide execution
+* improve consistency
+
+It is not the final execution output.

@@ -2,9 +2,9 @@
 
 ## What is Aegis?
 
-Aegis is a **runtime stabilization layer for AI systems**.
+Aegis is a **runtime control layer for AI systems**.
 
-It sits above your existing pipeline and improves:
+It sits above your existing pipeline and returns structured control decisions that improve:
 
 * consistency
 * efficiency
@@ -35,10 +35,10 @@ LLM / RAG / Agent → inconsistent behavior
 Aegis sits on top:
 
 ```
-Your System → Aegis → Stabilized Output
+Your System → Aegis → Control Decisions → Your System Executes
 ```
 
-Aegis observes behavior, applies control, and returns structured results.
+Aegis observes behavior, applies control, and returns structured outputs.
 
 ---
 
@@ -47,19 +47,25 @@ Aegis observes behavior, applies control, and returns structured results.
 At runtime:
 
 1. You call Aegis using a scope (`llm`, `rag`, or `step`)
+
 2. You describe instability via:
 
    * `symptoms`
    * `severity`
+
 3. Aegis evaluates system behavior
-4. It applies minimal corrective actions
+
+4. It selects minimal corrective actions
+
 5. It returns a structured `AegisResult`
+
+You then apply those controls in your system.
 
 ---
 
 ## Quick Example
 
-```python
+```python id="q3r9w1"
 from aegis import AegisClient, AegisConfig
 
 client = AegisClient(
@@ -69,12 +75,35 @@ client = AegisClient(
 
 result = client.auto().llm(
     base_prompt="You are a careful assistant.",
+    input={"user_query": "Explain recursion simply."},
     symptoms=["inconsistent_outputs"],
     severity="medium",
 )
 
-print(result.final_answer)
+print(result.actions)
+print(result.explanation)
 ```
+
+---
+
+## Important
+
+Aegis is a **control layer**.
+
+That means:
+
+* it does **not** execute your model
+* it does **not** generate the final answer
+* `final_answer` may be `None`
+
+Instead, Aegis returns:
+
+* control actions
+* runtime configuration
+* prompt shaping
+* trace and observability
+
+You use these to run your own system.
 
 ---
 
@@ -88,21 +117,33 @@ Aegis operates through **scopes**, which define where control is applied:
 | `rag`  | Stabilize retrieval + generation |
 | `step` | Stabilize agent/workflow steps   |
 
+Each scope maps to a backend endpoint:
+
+* `POST /v1/auto/llm`
+* `POST /v1/auto/rag`
+* `POST /v1/auto/step`
+
 ---
 
 ## Result Model
 
-All calls return an `AegisResult`:
+All calls return an `AegisResult`.
 
-* `final_answer`
+Key fields:
+
 * `actions`
-* `trace`
+* `trace` (list of decision events)
 * `metrics`
 * `used_fallback`
 * `scope_data`
 * `explanation`
 
-Aegis is **observable by design** — you can see what it did.
+Optional fields:
+
+* `final_answer` (often `None`)
+* `output` (often `None`)
+
+Aegis is **observable by design** — you can inspect exactly what it did.
 
 ---
 
@@ -112,13 +153,19 @@ Aegis is **observable by design** — you can see what it did.
 
 Aegis operates at execution time, not training time.
 
+---
+
 ### 2. Minimal Intervention
 
 It applies only the smallest changes needed to stabilize behavior.
 
+---
+
 ### 3. System-Level Thinking
 
 Aegis improves the system, not the model.
+
+---
 
 ### 4. Model Agnostic
 
@@ -126,26 +173,26 @@ Works with any LLM or framework.
 
 ---
 
-## Backend Reality (Important)
+## Backend Reality
 
-Aegis uses a **scope-first SDK**, but supports multiple backend routes:
+Aegis now uses a **scope-first API**:
 
-* Preferred: `/v1/auto/<scope>`
-* Compatible: `/v1/stabilize`
+* `POST /v1/auto/llm`
+* `POST /v1/auto/rag`
+* `POST /v1/auto/step`
 
-The client handles this automatically.
+These are the primary public endpoints.
 
 ---
 
 ## Docs
 
 * [Architecture](./architecture.md)
-* [SDK Overview](./sdk-overview.md)
 * [Scopes](./scopes.md)
 * [Result Model](./result-model.md)
 * [Integration Patterns](./integration-patterns.md)
-* [Demo Proofs](./demo-proofs.md)
-* [Legacy & Migration](./legacy-and-migration.md)
+* [Migration Guide](./migration-guide.md)
+* [Troubleshooting](./troubleshooting.md)
 
 ---
 
@@ -157,4 +204,16 @@ Start with:
 
 Then move into:
 
-→ `sdk-overview.md`
+→ `scopes.md`
+
+Then:
+
+→ `integration-patterns.md`
+
+---
+
+## Summary
+
+Aegis does not replace your system.
+
+It stabilizes how your system behaves at runtime by returning structured control decisions you apply during execution.

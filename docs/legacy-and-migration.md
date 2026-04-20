@@ -1,207 +1,231 @@
-# Legacy and Migration
+# Migration Guide
 
 ## Overview
 
-Aegis has evolved from a **plan-first system** to a **runtime stabilization system**.
+This guide explains how to move from older Aegis usage patterns to the current **scope-first runtime control** model.
 
-This document explains:
+The current public contract is:
 
-* what changed
-* what is deprecated
-* how to migrate safely
-
----
-
-## Old Model (Legacy)
-
-The original Aegis design was:
-
-```id="old_model"
-AegisPlan → execute → apply controls
-```
-
-Characteristics:
-
-* plan generated first
-* execution followed plan
-* control was precomputed
-* API centered around `/v1/plan`
-
----
-
-### Legacy Components
-
-* `AegisPlan`
-* `/v1/plan`
-* plan-based execution flow
-
-These are still present in the backend but are **not the primary integration path**.
-
----
-
-## New Model (Current)
-
-Aegis now operates as:
-
-```id="new_model"
-execute → observe → stabilize → return result
-```
-
-Characteristics:
-
-* runtime control
-* no pre-planning required
-* scope-based interface
-* structured result output
-
----
-
-### Primary Interface
-
-```python id="new_interface"
+```python id="g8w2m1"
 client.auto().llm(...)
 client.auto().rag(...)
 client.auto().step(...)
 ```
 
----
+Aegis now maps these directly to public backend endpoints:
 
-### Primary Output
-
-```python id="result_interface"
-AegisResult
-```
+* `POST /v1/auto/llm`
+* `POST /v1/auto/rag`
+* `POST /v1/auto/step`
 
 ---
 
-## Key Shift
+## What Changed
 
-### From:
+### Before
 
-* planning-first
-* static control
-* plan execution
+Older docs and examples could imply:
 
-### To:
+* fallback to `/v1/stabilize`
+* fallback to `/v1/plan`
+* scope was only a client-side abstraction
+* Aegis returned something closer to a direct final answer
 
-* runtime stabilization
-* dynamic control
-* observable execution
+### Now
 
----
+The current model is:
 
-## What is Deprecated
-
-### Plan-first usage
-
-```python id="deprecated_plan"
-# ❌ do not use
-plan = client.plan(...)
-```
+* scope-first public endpoints are real
+* scopes are part of both the SDK and backend contract
+* Aegis returns **control decisions**, not execution results
+* `trace` is a **list of dict events**
+* `symptoms` is required
+* `severity` is required
 
 ---
 
-### Direct reliance on `/v1/plan`
+## Migration Goal
 
-```id="deprecated_route"
-/v1/plan
-```
+Update your integration so that:
 
-Still exists, but:
-
-* legacy
-* not recommended for new integrations
+* you call `client.auto().<scope>(...)`
+* you read `scope_data`
+* you apply returned controls in your own system
+* you do not expect Aegis to execute the downstream model call
 
 ---
 
-## What is Current
+## Migration Step 1: Update Mental Model
 
-### Scope-first SDK
+### Old assumption
 
-```python id="current_usage"
+```python id="g4d9q1"
 result = client.auto().llm(...)
+print(result.final_answer)
 ```
 
----
+### New model
 
-### Runtime stabilization
-
-* behavior controlled during execution
-* no precomputed plan required
-
----
-
-### Result-driven workflow
-
-```python id="result_usage"
-result.actions
-result.trace
-result.metrics
-```
-
----
-
-## Migration Guide
-
-### Step 1: Remove plan usage
-
-Before:
-
-```python id="before_migration"
-plan = client.plan(...)
-execute(plan)
-```
-
-After:
-
-```python id="after_migration"
+```python id="t7r2v8"
 result = client.auto().llm(...)
+
+runtime_config = result.scope_data.get("runtime_config")
+controlled_prompt = result.scope_data.get("controlled_prompt")
+actions = result.actions
+```
+
+Aegis tells you **how to stabilize execution**.
+Your system performs execution.
+
+---
+
+## Migration Step 2: Use Scope-First Calls
+
+### LLM
+
+```python id="m2k8p6"
+result = client.auto().llm(
+    base_prompt="You are a helpful assistant.",
+    input={"user_query": "Explain recursion simply."},
+    symptoms=["inconsistent_outputs"],
+    severity="medium",
+)
+```
+
+### RAG
+
+```python id="q5c1x7"
+result = client.auto().rag(
+    query="What changed in the refund policy?",
+    retrieved_context=[
+        "Policy v2 released last week.",
+        "Refund window reduced to 14 days."
+    ],
+    symptoms=["retrieval_drift"],
+    severity="medium",
+)
+```
+
+### Step
+
+```python id="y8n4d2"
+result = client.auto().step(
+    step_name="coordinator",
+    step_input={"task": "resolve support ticket"},
+    symptoms=["unstable_workflow"],
+    severity="medium",
+)
 ```
 
 ---
 
-### Step 2: Replace plan outputs
+## Migration Step 3: Stop Relying on Legacy Route Assumptions
 
-Before:
+Do not build around:
 
-```python id="before_outputs"
-plan.controls
-plan.actions
-```
+* `/v1/stabilize`
+* `/v1/plan`
 
-After:
+Do build around:
 
-```python id="after_outputs"
-result.actions
-result.trace
-result.metrics
-```
+* `/v1/auto/llm`
+* `/v1/auto/rag`
+* `/v1/auto/step`
+
+If you are using the SDK normally, this mostly means keeping the client updated and using the public scope methods consistently.
 
 ---
 
-### Step 3: Use scopes correctly
+## Migration Step 4: Treat `trace` as a List
 
-| Old Concept       | New Scope |
-| ----------------- | --------- |
-| single agent      | `llm`     |
-| retrieval system  | `rag`     |
-| workflow / agents | `step`    |
+### Old assumption
+
+```python id="r3w6n9"
+decision = result.trace["decision"]
+```
+
+### Correct usage
+
+```python id="u1m5k4"
+decision = result.trace[0]["decision"]
+```
+
+Important:
+
+* `trace` is a list
+* each element is a decision event
+* the first event is usually the one you inspect first
 
 ---
 
-### Step 4: Add symptoms + severity
+## Migration Step 5: Treat `final_answer` as Optional
 
-Before:
+### Old assumption
 
-```python id="before_inputs"
-client.plan(base_prompt="...")
+```python id="p9x2d8"
+print(result.final_answer)
 ```
 
-After:
+### Correct understanding
 
-```python id="after_inputs"
-client.auto().llm(
-    base_prompt="...",
+```python id="s4q7v1"
+print(result.final_answer)  # may be None
+print(result.output)        # may be None
+print(result.scope_data)
+```
+
+If Aegis is acting purely as a control layer, `final_answer` and `output` may not be populated.
+
+That is expected behavior.
+
+---
+
+## Migration Step 6: Use `scope_data` for Execution
+
+### LLM migration pattern
+
+```python id="v6t3m8"
+result = client.auto().llm(
+    base_prompt=prompt,
+    input={"user_query": user_query},
+    symptoms=["inconsistent_outputs"],
+    severity="medium",
+)
+
+runtime_config = result.scope_data.get("runtime_config", {})
+controlled_prompt = result.scope_data.get("controlled_prompt", prompt)
+
+response = model.generate(
+    controlled_prompt,
+    temperature=runtime_config.get("temperature", 0.7),
+    top_p=runtime_config.get("top_p", 1.0),
+)
+```
+
+This is the key migration step for most users.
+
+---
+
+## Migration Step 7: Provide Required Inputs
+
+The current contract expects:
+
+* `symptoms` — required, non-empty list
+* `severity` — required, one of: `low`, `medium`, `high`
+
+### Invalid
+
+```python id="c7n1p5"
+result = client.auto().llm(
+    base_prompt="You are helpful."
+)
+```
+
+### Valid
+
+```python id="k4v9m2"
+result = client.auto().llm(
+    base_prompt="You are helpful.",
     symptoms=["inconsistent_outputs"],
     severity="medium",
 )
@@ -209,98 +233,81 @@ client.auto().llm(
 
 ---
 
-## Backend Reality
+## Common Migration Cases
 
-Even though the SDK is modern:
+### Case 1: Direct LLM wrapper
 
-* `/v1/stabilize` is still the main backend route
-* `/v1/plan` still exists
+If you previously expected Aegis to behave like a model call wrapper, migrate to:
 
-The SDK abstracts this difference.
-
----
-
-## Mixed Environments
-
-You may encounter:
-
-* legacy backend deployments
-* mixed API usage
-* partial migrations
-
-The SDK handles this via:
-
-* automatic fallback
-* response normalization
+* call Aegis first
+* extract controls
+* execute your own model call second
 
 ---
 
-## When to Use `/v1/plan`
+### Case 2: RAG systems
 
-Only if:
+If you previously treated Aegis as a passive RAG helper, migrate to:
 
-* you are debugging backend behavior
-* you need raw plan structures
-* you are working on internal development
-
-Not for standard integrations.
+* pass real `retrieved_context`
+* inspect `scope_data`
+* apply returned context/control signals before generation
 
 ---
 
-## Common Migration Mistakes
+### Case 3: Agent workflows
 
-### Trying to replicate plans
+If you previously used ad hoc retry logic, migrate to:
 
-Do NOT recreate:
-
-* plan objects
-* plan execution flows
-
----
-
-### Over-engineering
-
-Aegis no longer requires:
-
-* multi-step orchestration
-* manual control pipelines
+* place Aegis at step boundaries
+* use `result.actions`, `trace`, and `scope_data`
+* stabilize coordination before executing the next step
 
 ---
 
-### Ignoring result data
+## Quick Migration Checklist
 
-```python id="bad_migration"
-# ❌ ignoring result
-result = client.auto().llm(...)
-return result.final_answer
-```
+Use this list to confirm you are aligned:
 
-Instead:
+* using `client.auto().llm(...)`, `rag(...)`, or `step(...)`
+* passing required `symptoms`
+* passing required `severity`
+* not depending on legacy route behavior
+* reading `trace` as a list
+* treating `final_answer` as optional
+* applying `scope_data` in downstream execution
 
-```python id="good_migration"
+---
+
+## Recommended Verification
+
+After migration, check:
+
+```python id="n2q8w6"
+print(result.scope)
 print(result.actions)
 print(result.trace)
+print(result.used_fallback)
+print(result.scope_data)
 ```
 
----
+Expected:
 
-## Migration Summary
-
-To migrate:
-
-1. remove plan usage
-2. switch to `client.auto()`
-3. provide symptoms + severity
-4. use `AegisResult`
+* correct scope name
+* populated actions
+* list-based trace
+* `used_fallback` is usually `False`
+* meaningful scope data
 
 ---
 
-## Final Takeaway
+## Summary
 
-Aegis is no longer:
+Migration is complete when:
 
-→ a planning system
+* you use scope-first calls
+* you treat Aegis as a control layer
+* you apply returned controls in your own system
+* you stop expecting Aegis to be the execution engine
 
-It is now:
-
-→ a **runtime stabilization layer**
+That is the stable public model going forward.

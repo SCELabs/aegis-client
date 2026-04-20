@@ -4,7 +4,12 @@
 
 Scopes define **where Aegis applies control** in your system.
 
-They are a **client-side abstraction** used to target stabilization at the correct layer of execution.
+They are both:
+
+* a **client interface**
+* a **backend API boundary**
+
+Each scope maps directly to a runtime control endpoint.
 
 ---
 
@@ -16,9 +21,9 @@ Aegis currently supports:
 * `rag`
 * `step`
 
-All scopes use the same pattern:
+All scopes follow the same pattern:
 
-```python id="scope_pattern"
+```python
 client.auto().<scope>(...)
 ```
 
@@ -43,10 +48,10 @@ Stabilization for **single model calls**.
 
 ### Example
 
-```python id="llm_example"
+```python
 result = client.auto().llm(
     base_prompt="You are a careful assistant.",
-    input="Explain recursion simply.",
+    input={"user_query": "Explain recursion simply."},
     symptoms=["inconsistent_outputs"],
     severity="medium",
 )
@@ -54,7 +59,7 @@ result = client.auto().llm(
 
 ---
 
-### What Aegis may do
+### What Aegis does
 
 * reduce output variability
 * adjust generation parameters
@@ -63,10 +68,22 @@ result = client.auto().llm(
 
 ---
 
+### What you do next
+
+Aegis returns control decisions. You apply them:
+
+```python
+runtime_config = result.scope_data.get("runtime_config")
+controlled_prompt = result.scope_data.get("controlled_prompt")
+```
+
+Use these in your model call.
+
+---
+
 ### When NOT to use
 
-* full workflows
-* multi-step agents
+* multi-step workflows
 * retrieval pipelines
 
 ---
@@ -90,7 +107,7 @@ Stabilization for **retrieval + generation pipelines**.
 
 ### Example
 
-```python id="rag_example"
+```python
 result = client.auto().rag(
     query="What changed in the refund policy?",
     retrieved_context=[
@@ -104,34 +121,34 @@ result = client.auto().rag(
 
 ---
 
-### What Aegis may do
+### What Aegis does
 
-* expand retrieval
+* expand retrieval when needed
 * filter irrelevant context
-* recover missing support
 * rebalance context weighting
+* improve grounding signals
 
 ---
 
 ### Inspecting RAG behavior
 
-```python id="rag_debug"
+```python
 print(result.scope_data)
 ```
 
-Common fields:
+Common fields may include:
 
-* `retrieval_expansion_triggered`
-* `final_chunks`
-* `removed_chunks`
-* `before_after_metrics`
+* retrieval_expansion_triggered
+* final_chunks
+* removed_chunks
+* before_after_metrics
 
 ---
 
 ### When NOT to use
 
-* direct LLM calls
-* agent loops
+* direct model calls
+* workflow coordination
 
 ---
 
@@ -154,7 +171,7 @@ Stabilization for **workflow steps or agent coordination**.
 
 ### Example
 
-```python id="step_example"
+```python
 result = client.auto().step(
     step_name="coordinator",
     step_input={
@@ -168,58 +185,76 @@ result = client.auto().step(
 
 ---
 
-### What Aegis may do
+### What Aegis does
 
-* reduce retries
-* prevent unnecessary replans
-* suppress duplicate actions
+* reduce unnecessary retries
+* prevent duplicate actions
 * stabilize coordination behavior
+* enforce structured execution
 
 ---
 
 ### Real usage pattern
 
-Used at **execution boundaries**, not inside every step.
+Use at **execution boundaries**, not inside every micro-step.
 
 ---
 
 ### When NOT to use
 
-* simple prompts
+* simple prompt calls
 * retrieval pipelines
 
 ---
 
 ## Choosing the Right Scope
 
-| Situation              | Scope  |
-| ---------------------- | ------ |
-| single model call      | `llm`  |
-| retrieval pipeline     | `rag`  |
-| workflow or agent step | `step` |
+| Situation          | Scope |
+| ------------------ | ----- |
+| single model call  | llm   |
+| retrieval pipeline | rag   |
+| workflow or agent  | step  |
 
 ---
 
-## Scope is NOT a Backend Boundary
+## Scope Behavior
 
-Important:
+Each scope maps to a backend endpoint:
 
-Scopes do **not** correspond to backend endpoints.
+* POST /v1/auto/llm
+* POST /v1/auto/rag
+* POST /v1/auto/step
 
-They are:
+Scopes are not just abstractions anymore. They define real runtime control boundaries.
 
-* a **client abstraction**
-* mapped internally to backend execution
+---
+
+## Required Inputs
+
+All scopes require:
+
+* `symptoms` — non-empty list
+* `severity` — one of: low, medium, high
+
+Example:
+
+```python
+result = client.auto().llm(
+    base_prompt="You are a careful assistant.",
+    symptoms=["inconsistent_outputs"],
+    severity="medium",
+)
+```
 
 ---
 
 ## Common Mistakes
 
-### Over-scaling scope
+### Using the wrong scope
 
-```python id="bad_scope"
+```python
 # ❌ too large
-client.auto().step(...)  # for simple prompt
+client.auto().step(...)  
 
 # ✅ correct
 client.auto().llm(...)
@@ -227,21 +262,9 @@ client.auto().llm(...)
 
 ---
 
-### Under-scaling scope
+### Missing required fields
 
-```python id="bad_scope2"
-# ❌ too small
-client.auto().llm(...)  # inside multi-agent loop
-
-# ✅ correct
-client.auto().step(...)
-```
-
----
-
-### Missing symptoms
-
-```python id="bad_scope3"
+```python
 # ❌ incorrect
 client.auto().rag(query="...")
 
@@ -256,21 +279,30 @@ client.auto().rag(
 
 ---
 
-## Future Scopes (Not Available Yet)
+### Expecting execution
 
-These are planned but not implemented:
+Aegis does not execute your system.
 
-* `workflow` → multi-step pipeline control
-* `system` → full system orchestration
+```python
+# ❌ incorrect assumption
+result = client.auto().llm(...)
+print(result.final_answer)  # may be None
+```
+
+```python
+# ✅ correct usage
+runtime_config = result.scope_data.get("runtime_config")
+controlled_prompt = result.scope_data.get("controlled_prompt")
+```
 
 ---
 
 ## Summary
 
-Scopes let you:
+Scopes allow you to:
 
 * target the correct layer of control
-* avoid unnecessary intervention
+* apply minimal intervention
 * stabilize systems efficiently
 
-Use the **smallest effective scope**.
+Use the **smallest effective scope** for best results.
