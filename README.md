@@ -23,8 +23,6 @@ Aegis solves this by applying **runtime control and stabilization**, not retrain
 
 Instead of trying to make models *smarter*, Aegis makes systems **more stable, predictable, and efficient**.
 
-You call your system through Aegis:
-
 ```python
 from aegis import AegisClient
 
@@ -37,7 +35,7 @@ Aegis will:
 
 * detect instability signals
 * apply minimal corrective actions
-* return a structured result you can inspect and use
+* return structured results
 
 ---
 
@@ -49,25 +47,51 @@ pip install scelabs-aegis
 
 ---
 
-## Quickstart
+## 🔹 Get an API Key
+
+If running locally:
+
+```bash
+curl -X POST http://localhost:8000/v1/onboard \
+  -H "Content-Type: application/json" \
+  -d '{"email": "you@example.com"}'
+```
+
+This returns:
+
+* `api_key`
+* `base_url`
+* example usage
+
+---
+
+## 🔹 Set Environment
+
+```bash
+export AEGIS_API_KEY=your_key_here
+export AEGIS_BASE_URL=http://localhost:8000
+```
+
+---
+
+## 🔹 First Call
 
 ```python
 from aegis import AegisClient, AegisConfig
 
 client = AegisClient(
-    api_key="YOUR_API_KEY",
     config=AegisConfig(mode="balanced"),
 )
 
 result = client.auto().llm(
     base_prompt="You are a careful assistant.",
+    input="Explain recursion simply.",
     symptoms=["inconsistent_outputs"],
     severity="medium",
 )
 
 print(result.final_answer)
 print(result.actions)
-print(result.trace)
 ```
 
 ---
@@ -77,14 +101,14 @@ print(result.trace)
 Aegis uses a **scope-first runtime interface**:
 
 ```python
-client.auto().<scope>(...)
+client.auto().llm(...)
+client.auto().rag(...)
+client.auto().step(...)
 ```
 
-### Supported scopes
+### Scopes
 
-#### LLM
-
-Stabilize model calls and generation behavior.
+#### LLM — stabilize model calls
 
 ```python
 result = client.auto().llm(
@@ -96,14 +120,12 @@ result = client.auto().llm(
 
 ---
 
-#### RAG
-
-Control retrieval + generation consistency.
+#### RAG — stabilize retrieval + generation
 
 ```python
 result = client.auto().rag(
-    query="Summarize the updated policy.",
-    retrieved_context=["Policy v2 released last week."],
+    query="What changed in the policy?",
+    retrieved_context=["Policy updated last week."],
     symptoms=["retrieval_drift"],
     severity="medium",
 )
@@ -111,16 +133,14 @@ result = client.auto().rag(
 
 ---
 
-#### Step
-
-Stabilize workflow steps or agent coordination.
+#### Step — stabilize workflows / agents
 
 ```python
 result = client.auto().step(
-    step_name="ticket_triage",
-    step_input={"text": "User cannot login"},
-    symptoms=["misclassification"],
-    severity="high",
+    step_name="coordinator",
+    step_input={"task": "resolve ticket"},
+    symptoms=["unstable_workflow"],
+    severity="medium",
 )
 ```
 
@@ -128,7 +148,7 @@ result = client.auto().step(
 
 ## AegisResult
 
-Every call returns a structured result object:
+Every call returns a structured result:
 
 ```python
 result = client.auto().llm(...)
@@ -137,13 +157,12 @@ result = client.auto().llm(...)
 ### Key fields
 
 * `final_answer` — stabilized output
-* `actions` — runtime interventions applied
-* `trace` — execution trace (observations → decisions → changes)
-* `metrics` — performance and behavior signals
-* `used_fallback` — whether fallback logic was triggered
-* `scope` — llm / rag / step
-* `scope_data` — scope-specific debug data
-* `explanation` — human-readable reasoning
+* `actions` — interventions applied
+* `trace` — execution trace
+* `metrics` — performance signals
+* `used_fallback` — fallback indicator
+* `scope_data` — scope-specific debug info
+* `explanation` — reasoning summary
 
 ### Debugging
 
@@ -178,48 +197,59 @@ config = AegisConfig(
 
 ## How It Works (High-Level)
 
-Aegis acts as a **runtime control layer**:
-
-1. You describe instability via `symptoms` + `severity`
-2. Aegis evaluates system behavior
-3. It selects minimal corrective actions
-4. It returns structured controls and outputs
-
-This happens **without modifying your model integration**.
+1. You describe instability (`symptoms`, `severity`)
+2. Aegis evaluates runtime behavior
+3. It applies minimal corrections
+4. Returns structured output (`AegisResult`)
 
 ---
 
 ## Backend Compatibility
 
-The Aegis client is **scope-first**, but supports multiple backend shapes:
+The SDK is **scope-first**, but backend execution currently uses:
 
-* Preferred: `/v1/auto/<scope>` (llm / rag / step)
-* Fallback: `/v1/stabilize`
+```text
+/v1/stabilize
+```
 
-If a scope route is unavailable, the client automatically falls back to the stabilize endpoint.
+The client may attempt:
 
-This ensures compatibility across:
+```text
+/v1/auto/<scope>
+```
 
-* local deployments
-* older backend versions
-* production environments
+If unavailable, it automatically falls back to `/v1/stabilize`.
 
 ---
 
 ## Design Principles
 
-* Runtime control over training
-* Minimal intervention, maximum stability
-* Observable system behavior (trace + actions)
-* Model-agnostic integration
+* runtime control over training
+* minimal intervention
+* observable behavior (trace + actions)
+* model-agnostic integration
+
+---
+
+## Documentation
+
+Full docs are available in `/docs`:
+
+* architecture
+* SDK usage
+* scopes
+* result model
+* integration patterns
+* demos
+* migration guide
 
 ---
 
 ## Status
 
-* Stable client SDK
-* Production backend available
+* Stable SDK
 * Active scopes: `llm`, `rag`, `step`
+* Backend evolving toward scope-native endpoints
 
 ---
 
