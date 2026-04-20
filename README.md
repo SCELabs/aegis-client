@@ -47,12 +47,26 @@ pip install scelabs-aegis
 
 ---
 
+## You can use Aegis via a hosted API or run your own backend.
+
+---
+
 ## 🔹 Get an API Key
 
-If running locally:
+### Hosted (recommended)
 
 ```bash
-curl -X POST https://aegis-backend-production-4b47.up.railway.app/ \
+curl -X POST https://your-backend-url/v1/onboard \
+  -H "Content-Type: application/json" \
+  -d '{"email": "you@example.com"}'
+```
+
+---
+
+### Local (optional)
+
+```bash
+curl -X POST http://localhost:8000/v1/onboard \
   -H "Content-Type: application/json" \
   -d '{"email": "you@example.com"}'
 ```
@@ -66,6 +80,17 @@ This returns:
 ---
 
 ## 🔹 Set Environment
+
+### Hosted
+
+```bash
+export AEGIS_API_KEY=your_key_here
+export AEGIS_BASE_URL=https://your-backend-url
+```
+
+---
+
+### Local
 
 ```bash
 export AEGIS_API_KEY=your_key_here
