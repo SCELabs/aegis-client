@@ -2,26 +2,26 @@
 
 **Runtime stabilization for AI systems.**
 
-Aegis sits on top of your AI pipeline and ensures consistent, structured, and reliable behavior at runtime—without changing your models.
+Aegis sits on top of your AI pipeline and ensures consistent, structured, and reliable behavior at runtime — without changing your models.
 
 ---
 
 ## Why Aegis
 
-AI systems often fail in subtle ways:
+Modern AI systems fail in subtle but costly ways:
 
 * inconsistent outputs across identical inputs
 * unstable multi-step reasoning
 * retrieval drift in RAG systems
-* fragile agent execution
+* fragile agent execution loops
 
-Aegis fixes this by applying **runtime control and stabilization**, not retraining or prompt hacking.
+Aegis solves this by applying **runtime control and stabilization**, not retraining, prompt hacks, or model swaps.
 
 ---
 
 ## Core Idea
 
-Instead of trying to make models “smarter,” Aegis makes systems **more stable and predictable**.
+Instead of trying to make models *smarter*, Aegis makes systems **more stable, predictable, and efficient**.
 
 You call your system through Aegis:
 
@@ -29,14 +29,15 @@ You call your system through Aegis:
 from aegis import AegisClient
 
 client = AegisClient(api_key="YOUR_API_KEY")
+
 result = client.auto().llm(...)
 ```
 
-Aegis:
+Aegis will:
 
-* detects instability signals
-* applies minimal corrective actions
-* returns a structured result you can inspect
+* detect instability signals
+* apply minimal corrective actions
+* return a structured result you can inspect and use
 
 ---
 
@@ -71,11 +72,19 @@ print(result.trace)
 
 ---
 
-## Supported Scopes
+## SDK Surface
 
-### LLM
+Aegis uses a **scope-first runtime interface**:
 
-Stabilize single or multi-call model behavior.
+```python
+client.auto().<scope>(...)
+```
+
+### Supported scopes
+
+#### LLM
+
+Stabilize model calls and generation behavior.
 
 ```python
 result = client.auto().llm(
@@ -87,13 +96,13 @@ result = client.auto().llm(
 
 ---
 
-### RAG
+#### RAG
 
 Control retrieval + generation consistency.
 
 ```python
 result = client.auto().rag(
-    query="Summarize the updated support policy.",
+    query="Summarize the updated policy.",
     retrieved_context=["Policy v2 released last week."],
     symptoms=["retrieval_drift"],
     severity="medium",
@@ -102,9 +111,9 @@ result = client.auto().rag(
 
 ---
 
-### Step
+#### Step
 
-Stabilize individual pipeline or agent steps.
+Stabilize workflow steps or agent coordination.
 
 ```python
 result = client.auto().step(
@@ -119,7 +128,7 @@ result = client.auto().step(
 
 ## AegisResult
 
-Every call returns a structured result:
+Every call returns a structured result object:
 
 ```python
 result = client.auto().llm(...)
@@ -127,14 +136,14 @@ result = client.auto().llm(...)
 
 ### Key fields
 
-* `final_answer` – stabilized output
-* `actions` – adjustments applied at runtime
-* `trace` – execution trace of decisions
-* `metrics` – performance and behavior metrics
-* `used_fallback` – whether fallback logic was triggered
-* `scope` – llm / rag / step
-* `scope_data` – scope-specific metadata
-* `explanation` – human-readable reasoning
+* `final_answer` — stabilized output
+* `actions` — runtime interventions applied
+* `trace` — execution trace (observations → decisions → changes)
+* `metrics` — performance and behavior signals
+* `used_fallback` — whether fallback logic was triggered
+* `scope` — llm / rag / step
+* `scope_data` — scope-specific debug data
+* `explanation` — human-readable reasoning
 
 ### Debugging
 
@@ -151,38 +160,58 @@ print(result.to_dict())
 from aegis import AegisConfig
 
 config = AegisConfig(
-    mode="balanced",           # light | balanced | aggressive
+    mode="balanced",              # light | balanced | aggressive
     max_interventions=3,
     allow_retries=True,
     allow_retrieval_expansion=True,
     allow_context_reduction=True,
     allow_prompt_shaping=True,
-    fallback="safe",           # safe | baseline | strict
-    explain=True,
-    emit_trace=True,
-    policy="best_score",
+    fallback="baseline",          # safe | baseline | strict
+    explain=False,
+    emit_trace=False,
+    policy=None,
     timeout_ms=30000,
 )
 ```
 
 ---
 
-## Error Handling
+## How It Works (High-Level)
 
-Aegis raises explicit errors:
+Aegis acts as a **runtime control layer**:
 
-* `AegisAPIError` – API-level failures
-* `AegisConnectionError` – network issues
-* `AegisTimeoutError` – request timeouts
+1. You describe instability via `symptoms` + `severity`
+2. Aegis evaluates system behavior
+3. It selects minimal corrective actions
+4. It returns structured controls and outputs
+
+This happens **without modifying your model integration**.
+
+---
+
+## Backend Compatibility
+
+The Aegis client is **scope-first**, but supports multiple backend shapes:
+
+* Preferred: `/v1/auto/<scope>` (llm / rag / step)
+* Fallback: `/v1/stabilize`
+
+If a scope route is unavailable, the client automatically falls back to the stabilize endpoint.
+
+This ensures compatibility across:
+
+* local deployments
+* older backend versions
+* production environments
 
 ---
 
 ## Design Principles
 
-* **Runtime control over training**
-* **Minimal intervention, maximum stability**
-* **Observable system behavior (trace + actions)**
-* **Model-agnostic integration**
+* Runtime control over training
+* Minimal intervention, maximum stability
+* Observable system behavior (trace + actions)
+* Model-agnostic integration
 
 ---
 
@@ -190,7 +219,7 @@ Aegis raises explicit errors:
 
 * Stable client SDK
 * Production backend available
-* Current scopes: `llm`, `rag`, `step`
+* Active scopes: `llm`, `rag`, `step`
 
 ---
 
