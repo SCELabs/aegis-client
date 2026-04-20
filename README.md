@@ -52,7 +52,7 @@ pip install scelabs-aegis
 If running locally:
 
 ```bash
-curl -X POST http://localhost:8000/v1/onboard \
+curl -X POST https://aegis-backend-production-4b47.up.railway.app/ \
   -H "Content-Type: application/json" \
   -d '{"email": "you@example.com"}'
 ```
