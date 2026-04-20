@@ -85,7 +85,7 @@ This returns:
 
 ```bash
 export AEGIS_API_KEY=your_key_here
-export AEGIS_BASE_URL=https://your-backend-url
+export AEGIS_BASE_URL=https://aegis-backend-production-4b47.up.railway.app/
 ```
 
 ---
