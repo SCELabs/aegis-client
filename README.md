@@ -55,12 +55,6 @@ pip install scelabs-aegis
 
 ---
 
-## Hosted or Self-Hosted
-
-You can use Aegis through the hosted API or against your own backend deployment.
-
----
-
 ## Get an API Key
 
 ```bash
