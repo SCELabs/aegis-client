@@ -1,6 +1,17 @@
-# Aegis Client
+<p align="center">
+  <table>
+    <tr>
+      <td><img src="assets/aegis_logo.png" width="70"></td>
+      <td><h1 style="margin: 0;">Aegis</h1></td>
+    </tr>
+  </table>
+</p>
 
-**Runtime control for AI systems.**
+<p align="center">
+  <strong>Runtime control for AI systems.</strong>
+</p>
+
+---
 
 Aegis sits on top of your AI pipeline and returns structured control decisions that stabilize behavior at runtime without replacing your model, agent, or retrieval system.
 
