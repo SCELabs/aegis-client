@@ -4,9 +4,9 @@
   </a>
 </p>
 
-<p align="center">
+<h2 align="center">
   <strong>Runtime control for AI systems.</strong>
-</p>
+</h2>
 
 Aegis sits on top of your AI pipeline and returns structured control decisions that stabilize behavior at runtime without replacing your model, agent, or retrieval system.
 
