@@ -25,4 +25,4 @@ build/
 Thumbs.db
 
 # VS Code
-.vscode
+.vscode/
