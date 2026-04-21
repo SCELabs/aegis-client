@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://github.com/SCELabs/aegis-client">
-    <img src="assets/aegis_logo.png" width="320" />
+    <img src="assets/aegis_logo.png" width="260" alt="Aegis" />
   </a>
 </p>
 
@@ -9,7 +9,6 @@
 </p>
 
 Aegis sits on top of your AI pipeline and returns structured control decisions that stabilize behavior at runtime without replacing your model, agent, or retrieval system.
-
 
 ---
 
