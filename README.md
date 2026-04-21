@@ -1,11 +1,15 @@
 <p align="center">
-  <img src="assets/aegis_logo.png" width="110" />
+  <img src="assets/aegis_logo.png" width="320" />
 </p>
 
-<h2 align="center">Aegis</h2>
-<br/>
+<p align="center">
+  <strong>Runtime control for AI systems.</strong>
+</p>
+
+---
 
 Aegis sits on top of your AI pipeline and returns structured control decisions that stabilize behavior at runtime without replacing your model, agent, or retrieval system.
+
 
 ---
 
