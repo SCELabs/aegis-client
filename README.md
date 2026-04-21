@@ -1,11 +1,8 @@
 <p align="center">
-  <table>
-    <tr>
-      <td><img src="assets/aegis_logo.png" width="70"></td>
-      <td><h1 style="margin: 0;">Aegis</h1></td>
-    </tr>
-  </table>
+  <img src="assets/aegis_logo.png" width="90" />
 </p>
+
+<h1 align="center">Aegis</h1>
 
 <p align="center">
   <strong>Runtime control for AI systems.</strong>
