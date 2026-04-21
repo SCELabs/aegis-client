@@ -63,18 +63,8 @@ You can use Aegis through the hosted API or against your own backend deployment.
 
 ## Get an API Key
 
-### Hosted
-
 ```bash
 curl -X POST https://aegis-backend-production-4b47.up.railway.app/v1/onboard \
-  -H "Content-Type: application/json" \
-  -d '{"email":"you@example.com"}'
-```
-
-### Local
-
-```bash
-curl -X POST http://localhost:8000/v1/onboard \
   -H "Content-Type: application/json" \
   -d '{"email":"you@example.com"}'
 ```
@@ -91,18 +81,9 @@ This returns:
 
 ## Set Environment
 
-### Hosted
-
 ```bash
 export AEGIS_API_KEY=your_key_here
 export AEGIS_BASE_URL=https://aegis-backend-production-4b47.up.railway.app
-```
-
-### Local
-
-```bash
-export AEGIS_API_KEY=your_key_here
-export AEGIS_BASE_URL=http://localhost:8000
 ```
 
 ---
