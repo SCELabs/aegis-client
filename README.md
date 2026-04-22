@@ -21,7 +21,7 @@ Modern AI systems often fail in subtle but costly ways:
 * retrieval drift in RAG systems
 * fragile workflow and agent execution
 
-Aegis addresses these problems with **runtime stabilization**, not retraining, fine-tuning, or model swapping.
+Aegis addresses these problems with **runtime control**, not retraining, fine-tuning, or model swapping.
 
 ---
 
@@ -40,7 +40,7 @@ result = client.auto().llm(...)
 Aegis will:
 
 * detect instability signals
-* select corrective actions
+* select minimal corrective actions
 * return runtime controls and observability data
 
 Aegis does **not** execute the downstream LLM call for you.
@@ -138,6 +138,8 @@ result = client.auto().llm(
 )
 ```
 
+---
+
 ### RAG
 
 Use `rag` when instability appears in retrieval plus generation.
@@ -153,6 +155,78 @@ result = client.auto().rag(
     severity="medium",
 )
 ```
+
+### What changed in RAG
+
+Aegis no longer treats retrieval as a fixed input.
+
+It **controls retrieval behavior at runtime**.
+
+The RAG scope now:
+
+* enforces **typed evidence coverage** (source, test, support)
+* applies **relevant-file protection** (never drops critical context)
+* performs **selective expansion** (not always-on)
+* removes noise without losing required files
+* uses **staged retrieval** only when ambiguity or gaps are detected
+* applies **guided retrieval (intent + plan)** only when justified
+
+This is not just ranking or filtering.
+
+Aegis:
+
+* evaluates the retrieved set
+* diagnoses issues (missing support, ambiguity, distractors)
+* applies minimal corrective actions
+* returns a controlled context for downstream use
+
+---
+
+### How RAG control works
+
+At runtime:
+
+1. You pass query + retrieved context
+
+2. Aegis evaluates:
+
+   * missing required evidence
+   * role imbalance (source/test/support)
+   * distractor pressure
+   * ambiguity / multi-branch cases
+
+3. It decides whether to:
+
+   * keep as-is
+   * prune noise
+   * expand retrieval
+   * run a staged second pass
+   * guide retrieval when needed
+
+4. It enforces **relevant-file protection before final selection**
+
+Everything is gated and minimal.
+
+No always-on expansion. No blind pruning.
+
+---
+
+### Works with Agentic RAG
+
+Yes.
+
+Aegis sits above your agent system and stabilizes retrieval behavior.
+
+It can:
+
+* prevent agents from drifting due to poor context
+* enforce evidence requirements before execution
+* reduce retries and replans
+* stabilize multi-step retrieval chains
+
+Aegis does not replace your agents — it makes them more reliable.
+
+---
 
 ### Step
 
@@ -180,45 +254,64 @@ result = client.auto().llm(...)
 ### Key fields
 
 * `actions` — interventions Aegis selected
-* `trace` — list-based control trace
+* `trace` — structured control trace
 * `metrics` — runtime signals
 * `used_fallback` — whether fallback behavior was used
 * `explanation` — concise rationale
 * `scope` — llm, rag, or step
 * `scope_data` — scope-specific runtime data
 
-### Important
+---
 
-Aegis is a **control layer**.
+### RAG Observability (new)
 
-That means:
+RAG responses now include richer runtime signals:
 
-* `final_answer` may be None
-* `output` may be None
+Inside `scope_data`:
 
-Aegis does not generate the final model answer itself. It returns the control decisions and runtime shaping you apply to your own model or system.
+* `public_rag_runtime` — high-level runtime info
+* `retrieval_intent` — if guided retrieval was used
+* `retrieval_plan` — structured retrieval guidance (when triggered)
+* `initial_retrieved_chunks` — stage 1 candidates
+* `stage2_retrieved_chunks` — staged retrieval results (if used)
+* `before_after_metrics` — context quality changes
+
+Inside `trace`:
+
+* `decision.policy_path` includes:
+
+  * expansion score / threshold
+  * staged retrieval activation
+  * intent / plan activation
+
+* `changes` includes:
+
+  * protected chunk IDs
+  * relevant-file protection indicators
+
+These are optional but useful for debugging pipeline behavior.
 
 ---
 
-## Typical LLM Integration Pattern
+## Typical RAG Integration Pattern
 
 ```python
-result = client.auto().llm(
-    base_prompt="You are a helpful assistant.",
-    input={"user_query": "Explain black holes simply."},
-    symptoms=["inconsistent_outputs"],
+result = client.auto().rag(
+    query="Why is retry failing?",
+    retrieved_context=raw_context,
+    symptoms=["retrieval_drift"],
     severity="medium",
 )
 
-runtime_config = result.scope_data.get("runtime_config", {})
-controlled_prompt = result.scope_data.get("controlled_prompt")
+controlled_context = result.scope_data.get("retrieved_context")
+trace = result.trace
 
-print(runtime_config)
-print(controlled_prompt)
+print(controlled_context)
 print(result.actions)
+print(trace)
 ```
 
-You then apply the returned controls in your own downstream model call.
+You apply the returned controlled context in your downstream system.
 
 ---
 
@@ -226,40 +319,13 @@ You then apply the returned controls in your own downstream model call.
 
 ```json
 {
-  "output": null,
-  "final_answer": null,
-  "metrics": {
-    "action_count": 2
-  },
-  "actions": [
-    {
-      "type": "reduce_variability",
-      "intensity": "medium",
-      "label": "Reduce output variability"
-    }
-  ],
-  "trace": [
-    {
-      "scope": "llm",
-      "observation": {},
-      "decision": {},
-      "actions": [],
-      "fallback": {
-        "used_fallback": false
-      },
-      "changes": {},
-      "upstream": {}
-    }
-  ],
-  "used_fallback": false,
-  "explanation": "Selected because it achieved the highest overall score.",
-  "scope": "llm",
+  "actions": [...],
+  "trace": [...],
+  "scope": "rag",
   "scope_data": {
-    "runtime_config": {
-      "temperature": 0.2,
-      "top_p": 0.8
-    },
-    "controlled_prompt": "You are a helpful assistant. ..."
+    "retrieved_context": [...],
+    "public_rag_runtime": {...},
+    "before_after_metrics": {...}
   }
 }
 ```
@@ -273,7 +339,7 @@ print(result.debug_summary())
 print(result.to_dict())
 ```
 
-Useful fields to inspect first:
+Useful fields:
 
 ```python
 print(result.actions)
@@ -313,16 +379,6 @@ For scope calls, provide:
 * `symptoms` — required, non-empty list
 * `severity` — required, one of: low, medium, high
 
-Example:
-
-```python
-result = client.auto().llm(
-    base_prompt="You are a careful assistant.",
-    symptoms=["inconsistent_outputs"],
-    severity="medium",
-)
-```
-
 ---
 
 ## Design Principles
@@ -350,7 +406,7 @@ Docs in `/docs` explain:
 
 * Stable SDK surface
 * Active scopes: llm, rag, step
-* Public backend routes aligned to the scope-first contract
+* RAG scope now uses runtime-controlled retrieval behavior
 
 ---
 
