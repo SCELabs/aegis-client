@@ -28,6 +28,10 @@ classifiers = [
 "Programming Language :: Python :: 3 :: Only",
 "Operating System :: OS Independent",
 ]
+
+[project.scripts]
+aegis = "aegis.shell.cli:main"
+
 [tool.setuptools.packages.find]
 include = ["aegis*"]
 exclude = ["assets*", "docs*", "examples*", "tests*"]
