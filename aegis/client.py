@@ -12,6 +12,8 @@ from .result import AegisResult
 
 
 class AegisClient:
+    _LEGACY_FALLBACK_SCOPES = {"llm", "rag", "step"}
+
     def __init__(
         self,
         api_key: str | None = None,
@@ -123,6 +125,12 @@ class AegisClient:
         except AegisAPIError as exc:
             if exc.status_code not in (404, 405):
                 raise
+            if scope not in self._LEGACY_FALLBACK_SCOPES:
+                raise AegisAPIError(
+                    f"This Aegis backend does not support the '{scope}' auto scope. "
+                    "Upgrade aegis-backend or use a newer hosted endpoint.",
+                    status_code=exc.status_code,
+                ) from exc
             stabilize_payload = self._build_stabilize_payload(scope=scope, payload=payload)
             raw = self._post_json("/v1/stabilize", stabilize_payload)
 

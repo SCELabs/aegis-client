@@ -149,6 +149,116 @@ class TestAegisClient(unittest.TestCase):
         self.assertTrue(result.used_fallback)
 
     @patch("aegis.client.requests.post")
+    def test_context_scope_call_defaults(self, mock_post):
+        mock_response = Mock()
+        mock_response.ok = True
+        mock_response.json.return_value = {"scope": "context", "scope_data": {"cleaned_messages": []}}
+        mock_post.return_value = mock_response
+
+        result = self.client.auto().context(
+            objective="Clean context",
+            messages=[{"role": "user", "content": "Hello"}],
+            tool_results=[{"tool": "search", "ok": True}],
+            constraints=["be concise"],
+        )
+
+        self.assertEqual(result.scope, "context")
+        _, kwargs = mock_post.call_args
+        self.assertEqual(kwargs["json"]["objective"], "Clean context")
+        self.assertEqual(kwargs["json"]["messages"], [{"role": "user", "content": "Hello"}])
+        self.assertEqual(kwargs["json"]["tool_results"], [{"tool": "search", "ok": True}])
+        self.assertEqual(kwargs["json"]["constraints"], ["be concise"])
+        self.assertEqual(kwargs["json"]["symptoms"], ["context_noise"])
+        self.assertEqual(kwargs["json"]["severity"], "medium")
+        self.assertEqual(kwargs["json"]["metadata"], {})
+        self.assertTrue(mock_post.call_args.args[0].endswith("/v1/auto/context"))
+
+    @patch("aegis.client.requests.post")
+    def test_agent_scope_call_defaults(self, mock_post):
+        mock_response = Mock()
+        mock_response.ok = True
+        mock_response.json.return_value = {"scope": "agent", "scope_data": {"steps": []}}
+        mock_post.return_value = mock_response
+
+        result = self.client.auto().agent(goal="Resolve ticket")
+
+        self.assertEqual(result.scope, "agent")
+        _, kwargs = mock_post.call_args
+        self.assertEqual(kwargs["json"]["goal"], "Resolve ticket")
+        self.assertEqual(kwargs["json"]["steps"], [])
+        self.assertEqual(kwargs["json"]["tools"], [])
+        self.assertEqual(kwargs["json"]["symptoms"], ["unstable_workflow"])
+        self.assertEqual(kwargs["json"]["severity"], "medium")
+        self.assertEqual(kwargs["json"]["metadata"], {})
+        self.assertNotIn("max_steps", kwargs["json"])
+        self.assertTrue(mock_post.call_args.args[0].endswith("/v1/auto/agent"))
+
+    @patch("aegis.client.requests.post")
+    def test_agent_session_id_and_max_steps(self, mock_post):
+        mock_response = Mock()
+        mock_response.ok = True
+        mock_response.json.return_value = {"scope": "agent"}
+        mock_post.return_value = mock_response
+
+        self.client.auto().agent(
+            goal="Handle workflow",
+            session_id="sess-1",
+            max_steps=6,
+            metadata={"run_id": "r-9"},
+        )
+
+        payload = mock_post.call_args.kwargs["json"]
+        self.assertEqual(payload["metadata"]["session_id"], "sess-1")
+        self.assertEqual(payload["metadata"]["run_id"], "r-9")
+        self.assertEqual(payload["max_steps"], 6)
+
+    @patch("aegis.client.requests.post")
+    def test_agent_does_not_override_existing_session_id(self, mock_post):
+        mock_response = Mock()
+        mock_response.ok = True
+        mock_response.json.return_value = {"scope": "agent"}
+        mock_post.return_value = mock_response
+
+        self.client.auto().agent(
+            goal="Handle workflow",
+            session_id="sess-new",
+            metadata={"session_id": "sess-existing"},
+        )
+
+        payload = mock_post.call_args.kwargs["json"]
+        self.assertEqual(payload["metadata"]["session_id"], "sess-existing")
+
+    @patch("aegis.client.requests.post")
+    def test_context_unsupported_scope_does_not_fallback(self, mock_post):
+        not_found = Mock()
+        not_found.ok = False
+        not_found.status_code = 404
+        not_found.json.return_value = {"detail": "Not found"}
+        mock_post.return_value = not_found
+
+        with self.assertRaises(AegisAPIError) as ctx:
+            self.client.auto().context(objective="Clean context")
+
+        self.assertIn("does not support the 'context' auto scope", str(ctx.exception))
+        self.assertEqual(mock_post.call_count, 1)
+        self.assertTrue(mock_post.call_args.args[0].endswith("/v1/auto/context"))
+
+    @patch("aegis.client.requests.post")
+    def test_agent_unsupported_scope_does_not_fallback(self, mock_post):
+        method_not_allowed = Mock()
+        method_not_allowed.ok = False
+        method_not_allowed.status_code = 405
+        method_not_allowed.json.return_value = {"detail": "Method not allowed"}
+        mock_post.return_value = method_not_allowed
+
+        with self.assertRaises(AegisAPIError) as ctx:
+            self.client.auto().agent(goal="Run plan")
+
+        self.assertIn("does not support the 'agent' auto scope", str(ctx.exception))
+        self.assertEqual(mock_post.call_count, 1)
+        self.assertTrue(mock_post.call_args.args[0].endswith("/v1/auto/agent"))
+
+    @patch("aegis.client.requests.post")
     def test_fallback_to_stabilize_path(self, mock_post):
         not_found = Mock()
         not_found.ok = False

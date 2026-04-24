@@ -113,6 +113,8 @@ Aegis uses a **scope-first runtime interface**:
 client.auto().llm(...)
 client.auto().rag(...)
 client.auto().step(...)
+client.auto().context(...)
+client.auto().agent(...)
 ```
 
 These calls map to first-class public backend routes:
@@ -120,6 +122,8 @@ These calls map to first-class public backend routes:
 * POST /v1/auto/llm
 * POST /v1/auto/rag
 * POST /v1/auto/step
+* POST /v1/auto/context
+* POST /v1/auto/agent
 
 ---
 
@@ -241,6 +245,45 @@ result = client.auto().step(
 )
 ```
 
+### Context
+
+Use `context` to control information state before the next model or workflow action.
+
+```python
+result = client.auto().context(
+    objective="Prepare the next response context.",
+    messages=[
+        {"role": "user", "content": "Summarize blockers from this thread."},
+        {"role": "assistant", "content": "Draft summary goes here."},
+    ],
+    tool_results=[
+        {"tool": "ticket_lookup", "ok": True, "data": {"id": "T-42", "status": "open"}},
+    ],
+    constraints=["keep it concise", "cite ticket IDs"],
+    severity="medium",
+)
+```
+
+`context` can clean and prioritize messages and tool results so your downstream call receives better state.
+
+### Agent
+
+Use `agent` to control multi-step workflow loops on top of your existing AI pipeline.
+
+```python
+result = client.auto().agent(
+    goal="Resolve the support ticket safely.",
+    steps=[
+        {"name": "triage", "input": {"ticket_id": "T-42"}},
+        {"name": "propose_resolution", "input": {"channel": "email"}},
+    ],
+    max_steps=4,
+    severity="medium",
+)
+```
+
+`agent` can control multi-step execution, tool-result integration, carry-forward context, and stop/retry/escalation decisions.
+
 ---
 
 ## What Aegis Returns
@@ -258,7 +301,7 @@ result = client.auto().llm(...)
 * `metrics` — runtime signals
 * `used_fallback` — whether fallback behavior was used
 * `explanation` — concise rationale
-* `scope` — llm, rag, or step
+* `scope` — llm, rag, step, context, or agent
 * `scope_data` — scope-specific runtime data
 
 ---
@@ -374,10 +417,22 @@ config = AegisConfig(
 
 ## Required Request Inputs
 
-For scope calls, provide:
+For scope calls, provide objective/goal/input fields and a `severity` value (`low`, `medium`, or `high`).
+
+Symptoms behavior:
 
 * `symptoms` — required, non-empty list
 * `severity` — required, one of: low, medium, high
+
+Example:
+
+```python
+result = client.auto().llm(
+    base_prompt="You are a careful assistant.",
+    symptoms=["inconsistent_outputs"],
+    severity="medium",
+)
+```
 
 ---
 
@@ -406,7 +461,7 @@ Docs in `/docs` explain:
 
 * Stable SDK surface
 * Active scopes: llm, rag, step
-* RAG scope now uses runtime-controlled retrieval behavior
+* Public backend routes aligned to the scope-first contract
 
 ---
 
