@@ -44,6 +44,7 @@ Aegis will:
 * return runtime controls and observability data
 
 Aegis does **not** execute the downstream LLM call for you.
+It is not a model, not a full execution engine, and not a replacement for LangChain, LangGraph, or your tool stack.
 
 ---
 
@@ -66,9 +67,7 @@ curl -X POST https://aegis-backend-production-4b47.up.railway.app/v1/onboard \
 This returns:
 
 * `api_key`
-* `auto_llm_url`
-* `auto_rag_url`
-* `auto_step_url`
+* auto scope URLs (including `auto_llm_url`, `auto_rag_url`, `auto_step_url`, `auto_context_url`, and `auto_agent_url` on current backends)
 * example usage
 
 ---
@@ -417,12 +416,12 @@ config = AegisConfig(
 
 ## Required Request Inputs
 
-For scope calls, provide objective/goal/input fields and a `severity` value (`low`, `medium`, or `high`).
+For scope calls, `severity` should be one of: `low`, `medium`, `high`.
 
 Symptoms behavior:
 
-* `symptoms` — required, non-empty list
-* `severity` — required, one of: low, medium, high
+* `llm`, `rag`, and `step` require explicit `symptoms` and `severity`
+* `context` and `agent` provide safe defaults for `symptoms` and `severity` when omitted
 
 Example:
 
@@ -460,7 +459,7 @@ Docs in `/docs` explain:
 ## Status
 
 * Stable SDK surface
-* Active scopes: llm, rag, step
+* Active scopes: llm, rag, step, context, agent
 * Public backend routes aligned to the scope-first contract
 
 ---
@@ -468,3 +467,4 @@ Docs in `/docs` explain:
 ## License
 
 MIT
+

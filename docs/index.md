@@ -2,43 +2,11 @@
 
 ## What is Aegis?
 
-Aegis is a **runtime control layer for AI systems**.
+Aegis is a runtime control layer for AI systems.
 
-It sits above your existing pipeline and returns structured control decisions that improve:
+It sits on top of your existing model, retrieval, and workflow stack and returns structured control decisions that help stabilize runtime behavior.
 
-* consistency
-* efficiency
-* execution reliability
-
-Aegis does not replace your models, frameworks, or workflows.
-It controls how they behave at runtime.
-
----
-
-## Who this is for
-
-* Engineers building AI-powered applications
-* Developers using LLMs, RAG systems, or agents
-* Teams deploying AI systems in production
-* AI coding agents integrating Aegis into pipelines
-
----
-
-## Core Mental Model
-
-You already have a system:
-
-```
-LLM / RAG / Agent → inconsistent behavior
-```
-
-Aegis sits on top:
-
-```
-Your System → Aegis → Control Decisions → Your System Executes
-```
-
-Aegis observes behavior, applies control, and returns structured outputs.
+Aegis is not a model, not a full execution engine, and not a replacement for LangChain, LangGraph, or tools.
 
 ---
 
@@ -46,36 +14,35 @@ Aegis observes behavior, applies control, and returns structured outputs.
 
 At runtime:
 
-1. You call Aegis using a scope (`llm`, `rag`, or `step`)
+1. You call Aegis with a scope: `llm`, `rag`, `step`, `context`, or `agent`
+2. You provide instability signals (typically `symptoms` and `severity`)
+3. Aegis evaluates state and selects minimal corrective actions
+4. Aegis returns an `AegisResult` with controls and observability
+5. Your system applies those controls during downstream execution
 
-2. You describe instability via:
+---
 
-   * `symptoms`
-   * `severity`
+## Scope Table
 
-3. Aegis evaluates system behavior
-
-4. It selects minimal corrective actions
-
-5. It returns a structured `AegisResult`
-
-You then apply those controls in your system.
+| Scope     | Purpose                                   |
+| --------- | ----------------------------------------- |
+| `llm`     | control generation/model-call behavior    |
+| `rag`     | control retrieved evidence/context        |
+| `step`    | control one workflow/action               |
+| `context` | control information state                 |
+| `agent`   | control multi-step workflow loops         |
 
 ---
 
 ## Quick Example
 
-```python id="q3r9w1"
-from aegis import AegisClient, AegisConfig
+```python
+from aegis import AegisClient
 
-client = AegisClient(
-    api_key="YOUR_API_KEY",
-    config=AegisConfig(mode="balanced"),
-)
+client = AegisClient()
 
 result = client.auto().llm(
     base_prompt="You are a careful assistant.",
-    input={"user_query": "Explain recursion simply."},
     symptoms=["inconsistent_outputs"],
     severity="medium",
 )
@@ -88,100 +55,25 @@ print(result.explanation)
 
 ## Important
 
-Aegis is a **control layer**.
+Aegis generally returns control outputs, not final model execution.
 
 That means:
 
-* it does **not** execute your model
-* it does **not** generate the final answer
-* `final_answer` may be `None`
-
-Instead, Aegis returns:
-
-* control actions
-* runtime configuration
-* prompt shaping
-* trace and observability
-
-You use these to run your own system.
-
----
-
-## Scopes
-
-Aegis operates through **scopes**, which define where control is applied:
-
-| Scope  | Use Case                         |
-| ------ | -------------------------------- |
-| `llm`  | Stabilize model calls            |
-| `rag`  | Stabilize retrieval + generation |
-| `step` | Stabilize agent/workflow steps   |
-
-Each scope maps to a backend endpoint:
-
-* `POST /v1/auto/llm`
-* `POST /v1/auto/rag`
-* `POST /v1/auto/step`
-
----
-
-## Result Model
-
-All calls return an `AegisResult`.
-
-Key fields:
-
-* `actions`
-* `trace` (list of decision events)
-* `metrics`
-* `used_fallback`
-* `scope_data`
-* `explanation`
-
-Optional fields:
-
-* `final_answer` (often `None`)
-* `output` (often `None`)
-
-Aegis is **observable by design** — you can inspect exactly what it did.
-
----
-
-## Key Principles
-
-### 1. Runtime Control
-
-Aegis operates at execution time, not training time.
-
----
-
-### 2. Minimal Intervention
-
-It applies only the smallest changes needed to stabilize behavior.
-
----
-
-### 3. System-Level Thinking
-
-Aegis improves the system, not the model.
-
----
-
-### 4. Model Agnostic
-
-Works with any LLM or framework.
+* `final_answer` and `output` may be `None`
+* `context` and `agent` may return cleaned context or run-summary style output data
+* your downstream model/tool/workflow execution still happens in your system
 
 ---
 
 ## Backend Reality
 
-Aegis now uses a **scope-first API**:
+Current public auto routes:
 
 * `POST /v1/auto/llm`
 * `POST /v1/auto/rag`
 * `POST /v1/auto/step`
-
-These are the primary public endpoints.
+* `POST /v1/auto/context`
+* `POST /v1/auto/agent`
 
 ---
 
@@ -191,29 +83,11 @@ These are the primary public endpoints.
 * [Scopes](./scopes.md)
 * [Result Model](./result-model.md)
 * [Integration Patterns](./integration-patterns.md)
-* [Migration Guide](./migration-guide.md)
-* [Troubleshooting](./troubleshooting.md)
-
----
-
-## Next Step
-
-Start with:
-
-→ `architecture.md`
-
-Then move into:
-
-→ `scopes.md`
-
-Then:
-
-→ `integration-patterns.md`
+* [Migration Guide](./legacy-and-migration.md)
+* [Troubleshooting](./troubleshoot.md)
 
 ---
 
 ## Summary
 
-Aegis does not replace your system.
-
-It stabilizes how your system behaves at runtime by returning structured control decisions you apply during execution.
+Aegis stabilizes runtime behavior by returning structured control decisions your existing system can apply safely.

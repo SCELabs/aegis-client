@@ -2,30 +2,15 @@
 
 ## Overview
 
-Scopes define **where Aegis applies control** in your system.
+Scopes define where Aegis applies runtime control.
 
-They are both:
-
-* a **client interface**
-* a **backend API boundary**
-
-Each scope maps directly to a runtime control endpoint.
-
----
-
-## Available Scopes
-
-Aegis currently supports:
-
-* `llm`
-* `rag`
-* `step`
-
-All scopes follow the same pattern:
+All scopes use the same SDK shape:
 
 ```python
 client.auto().<scope>(...)
 ```
+
+Available scopes: `llm`, `rag`, `step`, `context`, `agent`.
 
 ---
 
@@ -33,58 +18,34 @@ client.auto().<scope>(...)
 
 ### What it is
 
-Stabilization for **single model calls**.
-
----
+Control for direct model-call behavior.
 
 ### When to use
 
 * inconsistent outputs
-* prompt instability
 * formatting drift
-* unreliable reasoning
+* prompt instability
 
----
-
-### Example
+### Minimal SDK example
 
 ```python
 result = client.auto().llm(
     base_prompt="You are a careful assistant.",
-    input={"user_query": "Explain recursion simply."},
     symptoms=["inconsistent_outputs"],
     severity="medium",
 )
 ```
 
----
+### What Aegis controls
 
-### What Aegis does
+* generation guardrails and shaping inputs
+* runtime config hints (for example temperature/top_p policy)
+* retry/escalation control actions where supported
 
-* reduce output variability
-* adjust generation parameters
-* apply prompt shaping
-* enforce consistency
+### When not to use
 
----
-
-### What you do next
-
-Aegis returns control decisions. You apply them:
-
-```python
-runtime_config = result.scope_data.get("runtime_config")
-controlled_prompt = result.scope_data.get("controlled_prompt")
-```
-
-Use these in your model call.
-
----
-
-### When NOT to use
-
-* multi-step workflows
-* retrieval pipelines
+* retrieval-quality problems
+* multi-step workflow loops
 
 ---
 
@@ -92,63 +53,35 @@ Use these in your model call.
 
 ### What it is
 
-Stabilization for **retrieval + generation pipelines**.
-
----
+Control for retrieved evidence and grounded generation behavior.
 
 ### When to use
 
-* missing context
-* irrelevant retrieval
-* inconsistent answers
-* weak grounding
+* weak or noisy retrieval sets
+* grounding drift
+* evidence coverage gaps
 
----
-
-### Example
+### Minimal SDK example
 
 ```python
 result = client.auto().rag(
-    query="What changed in the refund policy?",
-    retrieved_context=[
-        "Policy v2 released last week.",
-        "Refund window reduced to 14 days."
-    ],
+    query="What changed in refund policy?",
+    retrieved_context=["Policy v3", "Refund window is 14 days"],
     symptoms=["retrieval_drift"],
     severity="medium",
 )
 ```
 
----
+### What Aegis controls
 
-### What Aegis does
+* retrieval-set quality checks
+* context pruning and prioritization
+* evidence-balancing decisions
 
-* expand retrieval when needed
-* filter irrelevant context
-* rebalance context weighting
-* improve grounding signals
+### When not to use
 
----
-
-### Inspecting RAG behavior
-
-```python
-print(result.scope_data)
-```
-
-Common fields may include:
-
-* retrieval_expansion_triggered
-* final_chunks
-* removed_chunks
-* before_after_metrics
-
----
-
-### When NOT to use
-
-* direct model calls
-* workflow coordination
+* direct non-RAG generation tasks
+* whole workflow orchestration
 
 ---
 
@@ -156,153 +89,135 @@ Common fields may include:
 
 ### What it is
 
-Stabilization for **workflow steps or agent coordination**.
-
----
+Control for one workflow/action boundary.
 
 ### When to use
 
-* agent loops
-* multi-agent systems
-* tool execution steps
-* coordination instability
+* a single unstable action in a larger flow
+* one coordinator/tool step needs runtime guardrails
 
----
-
-### Example
+### Minimal SDK example
 
 ```python
 result = client.auto().step(
-    step_name="coordinator",
-    step_input={
-        "task": "resolve support ticket",
-        "history": []
-    },
-    symptoms=["unstable_workflow"],
-    severity="medium",
+    step_name="ticket_triage",
+    step_input={"ticket_id": "T-42"},
+    symptoms=["routing_instability"],
+    severity="high",
 )
 ```
 
----
+### What Aegis controls
 
-### What Aegis does
+* per-step retries/adjustments
+* action-level stability decisions
+* step-level traceable interventions
 
-* reduce unnecessary retries
-* prevent duplicate actions
-* stabilize coordination behavior
-* enforce structured execution
+### When not to use
 
----
-
-### Real usage pattern
-
-Use at **execution boundaries**, not inside every micro-step.
+* broader multi-step loops
+* message/tool-result state cleanup
 
 ---
 
-### When NOT to use
+## Context Scope
 
-* simple prompt calls
-* retrieval pipelines
+### What it is
+
+Control for message and tool-result information state.
+
+### When to use
+
+* conversation state is noisy or stale
+* tool results are verbose or mixed quality
+* you need a clean carry-forward packet
+
+### Minimal SDK example
+
+```python
+result = client.auto().context(
+    objective="Prepare context for the next response.",
+    messages=[{"role": "user", "content": "Summarize blockers"}],
+    tool_results=[{"tool": "ticket_lookup", "ok": True, "data": {"id": "T-42"}}],
+)
+```
+
+### What Aegis controls
+
+* prioritizes relevant messages and tool results
+* drops low-value/noisy context
+* preserves protected context where supported
+* returns cleaned messages/tool results, carry-forward context, trace/actions
+
+### When not to use
+
+* direct model-call tuning without context cleanup needs
+* full workflow loop orchestration
+
+---
+
+## Agent Scope
+
+### What it is
+
+Control for multi-step workflow-loop behavior.
+
+### When to use
+
+* multi-step agent runs need runtime stabilization
+* tool integration and carry-forward state need oversight
+* stop/retry/escalation decisions should be controlled
+
+### Minimal SDK example
+
+```python
+result = client.auto().agent(
+    goal="Resolve support ticket safely.",
+    steps=[
+        {"name": "triage", "input": {"ticket_id": "T-42"}},
+        {"name": "draft_response", "input": {"channel": "email"}},
+    ],
+    tools=[],
+    max_steps=4,
+)
+```
+
+### What Aegis controls
+
+* loop-level runtime decisions across steps
+* step progression with memory/carry-forward context
+* tool-result integration
+* stop/retry/escalation decisions where supported
+
+### When not to use
+
+* single-step calls where `step` is enough
+* systems that need Aegis to execute tools directly
+
+Aegis agent scope does not replace existing agent frameworks. It adds runtime control on top of them.
+
+Useful patterns include agentic RAG, support workflows, coding agents, and research workflows.
 
 ---
 
 ## Choosing the Right Scope
 
-| Situation          | Scope |
-| ------------------ | ----- |
-| single model call  | llm   |
-| retrieval pipeline | rag   |
-| workflow or agent  | step  |
+| Situation                           | Scope     |
+| ----------------------------------- | --------- |
+| Direct model generation             | `llm`     |
+| Retrieved evidence/context quality  | `rag`     |
+| One workflow action                 | `step`    |
+| Cleaning/prioritizing state         | `context` |
+| Multi-step loop/workflow            | `agent`   |
 
 ---
 
-## Scope Behavior
+## Endpoints
 
-Each scope maps to a backend endpoint:
+Each scope maps to a public route:
 
-* POST /v1/auto/llm
-* POST /v1/auto/rag
-* POST /v1/auto/step
-
-Scopes are not just abstractions anymore. They define real runtime control boundaries.
-
----
-
-## Required Inputs
-
-All scopes require:
-
-* `symptoms` — non-empty list
-* `severity` — one of: low, medium, high
-
-Example:
-
-```python
-result = client.auto().llm(
-    base_prompt="You are a careful assistant.",
-    symptoms=["inconsistent_outputs"],
-    severity="medium",
-)
-```
-
----
-
-## Common Mistakes
-
-### Using the wrong scope
-
-```python
-# ❌ too large
-client.auto().step(...)  
-
-# ✅ correct
-client.auto().llm(...)
-```
-
----
-
-### Missing required fields
-
-```python
-# ❌ incorrect
-client.auto().rag(query="...")
-
-# ✅ correct
-client.auto().rag(
-    query="...",
-    retrieved_context=[...],
-    symptoms=["retrieval_drift"],
-    severity="medium"
-)
-```
-
----
-
-### Expecting execution
-
-Aegis does not execute your system.
-
-```python
-# ❌ incorrect assumption
-result = client.auto().llm(...)
-print(result.final_answer)  # may be None
-```
-
-```python
-# ✅ correct usage
-runtime_config = result.scope_data.get("runtime_config")
-controlled_prompt = result.scope_data.get("controlled_prompt")
-```
-
----
-
-## Summary
-
-Scopes allow you to:
-
-* target the correct layer of control
-* apply minimal intervention
-* stabilize systems efficiently
-
-Use the **smallest effective scope** for best results.
+* `POST /v1/auto/llm`
+* `POST /v1/auto/rag`
+* `POST /v1/auto/step`
+* `POST /v1/auto/context`
+* `POST /v1/auto/agent`

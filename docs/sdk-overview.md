@@ -2,328 +2,130 @@
 
 ## Introduction
 
-The Aegis SDK provides a **scope-first runtime interface** for stabilizing AI systems.
+The Aegis SDK provides a scope-first runtime interface for stabilizing AI systems.
 
-It allows you to wrap existing execution with minimal changes while gaining:
-
-* consistency
-* efficiency
-* observability
+Aegis is a control layer that returns structured decisions and observability data your existing system applies.
 
 ---
 
-## Installation
+## Core Interface
 
-```bash
-pip install scelabs-aegis
-```
-
----
-
-## Basic Setup
-
-```python
-from aegis import AegisClient, AegisConfig
-
-client = AegisClient(
-    api_key="YOUR_API_KEY",
-    base_url="http://localhost:8000",  # optional
-    config=AegisConfig(mode="balanced"),
-)
-```
-
-### Environment Variables (optional)
-
-```bash
-AEGIS_API_KEY=...
-AEGIS_BASE_URL=http://localhost:8000
-```
-
----
-
-## Core Usage Pattern
-
-All Aegis calls use:
+All public SDK usage goes through:
 
 ```python
 client.auto().<scope>(...)
 ```
 
-This is the **only primary interface**.
+Current scopes:
+
+```python
+client.auto().llm(...)
+client.auto().rag(...)
+client.auto().step(...)
+client.auto().context(...)
+client.auto().agent(...)
+```
 
 ---
 
-## Scopes
+## Backend Routes
 
-### LLM Scope
+Scopes map to public backend endpoints:
 
-Used for stabilizing direct model calls.
+* `POST /v1/auto/llm`
+* `POST /v1/auto/rag`
+* `POST /v1/auto/step`
+* `POST /v1/auto/context`
+* `POST /v1/auto/agent`
+
+The SDK keeps legacy fallback only for `llm`, `rag`, and `step` when older backends return 404/405. `context` and `agent` require newer backend support.
+
+---
+
+## Minimal Scope Examples
+
+### LLM
 
 ```python
 result = client.auto().llm(
     base_prompt="You are a careful assistant.",
     symptoms=["inconsistent_outputs"],
     severity="medium",
-    input="Explain recursion simply."
 )
 ```
 
----
-
-### RAG Scope
-
-Used for stabilizing retrieval + generation.
+### RAG
 
 ```python
 result = client.auto().rag(
-    query="What changed in the new policy?",
-    retrieved_context=[
-        "Policy v2 was released last week.",
-        "Refund window reduced to 14 days."
-    ],
+    query="What changed in refund policy?",
+    retrieved_context=["Policy v3", "Refund window is 14 days"],
     symptoms=["retrieval_drift"],
     severity="medium",
 )
 ```
 
----
-
-### Step Scope
-
-Used for stabilizing workflow steps or agents.
+### Step
 
 ```python
 result = client.auto().step(
     step_name="ticket_triage",
-    step_input={"text": "User cannot login"},
-    symptoms=["misclassification"],
+    step_input={"ticket_id": "T-42"},
+    symptoms=["routing_instability"],
     severity="high",
 )
 ```
 
----
-
-## Required Inputs
-
-All scopes require:
-
-### symptoms
-
-A list of instability signals:
+### Context
 
 ```python
-symptoms=["inconsistent_outputs"]
+result = client.auto().context(
+    objective="Prepare context for the next response.",
+    messages=[{"role": "user", "content": "Summarize blockers"}],
+)
 ```
 
-Examples:
-
-* `"inconsistent_outputs"`
-* `"unstable_workflow"`
-* `"agents_disagree"`
-* `"retrieval_drift"`
-
----
-
-### severity
-
-Controls intervention strength:
+### Agent
 
 ```python
-severity="medium"
-```
-
-Options:
-
-* `"low"`
-* `"medium"`
-* `"high"`
-
----
-
-## Optional Inputs
-
-Depending on scope:
-
-* `input` → for LLM calls
-* `metadata` → additional context
-* `retrieved_context` → for RAG
-* `step_input` → for step scope
-
----
-
-## AegisResult
-
-Every call returns:
-
-```python
-result = client.auto().llm(...)
-```
-
-### Fields
-
-* `output` → raw output
-* `final_answer` → stabilized result
-* `metrics` → execution metrics
-* `actions` → applied interventions
-* `trace` → decision trace
-* `used_fallback` → fallback indicator
-* `explanation` → reasoning summary
-* `scope` → llm / rag / step
-* `scope_data` → scope-specific data
-
----
-
-## Debugging
-
-```python
-print(result.debug_summary())
-print(result.to_dict())
-print(result.to_log_record())
-```
-
----
-
-## Configuration
-
-```python
-from aegis import AegisConfig
-
-config = AegisConfig(
-    mode="balanced",
-    max_interventions=3,
-    allow_retries=True,
-    allow_retrieval_expansion=True,
-    allow_context_reduction=True,
-    allow_prompt_shaping=True,
-    fallback="baseline",
-    explain=False,
-    emit_trace=False,
-    policy=None,
-    timeout_ms=30000,
+result = client.auto().agent(
+    goal="Resolve support ticket safely.",
+    steps=[
+        {"name": "triage", "input": {"ticket_id": "T-42"}},
+        {"name": "draft_response", "input": {"channel": "email"}},
+    ],
+    max_steps=4,
 )
 ```
 
 ---
 
-## Modes
+## Inputs and Defaults
 
-### light
-
-* minimal intervention
-* low overhead
-
-### balanced (default)
-
-* moderate stabilization
-* recommended for most cases
-
-### aggressive
-
-* stronger corrections
-* higher control intensity
+* `llm`, `rag`, and `step` require explicit `symptoms` and `severity`
+* `context` and `agent` provide safe defaults for `symptoms` and `severity`
+* `severity` values are: `low`, `medium`, `high`
 
 ---
 
-## Execution Behavior
+## Common Return Type
 
-When you call:
+Every scope call returns `AegisResult`.
 
-```python
-client.auto().llm(...)
-```
+Common fields include:
 
-The SDK:
+* `actions`
+* `trace`
+* `metrics`
+* `used_fallback`
+* `explanation`
+* `scope`
+* `scope_data`
 
-1. builds a scope payload
-2. sends request to backend
-3. receives response
-4. converts it into `AegisResult`
-
----
-
-## Backend Routing (Important)
-
-The SDK may call:
-
-```text
-/v1/auto/<scope>   (if available)
-```
-
-If not available:
-
-```text
-/v1/stabilize
-```
-
-This fallback is automatic.
-
----
-
-## Best Practices
-
-### Use the smallest scope
-
-* use `llm` for single calls
-* use `rag` for retrieval pipelines
-* use `step` for workflows
-
----
-
-### Provide accurate symptoms
-
-Better inputs → better stabilization.
-
----
-
-### Inspect results
-
-Aegis is designed to be observable:
-
-```python
-result.actions
-result.trace
-```
-
----
-
-### Avoid overuse
-
-Do not wrap every call blindly.
-Use Aegis where instability exists.
-
----
-
-## Common Mistakes
-
-### Missing symptoms
-
-```python
-# ❌ incorrect
-client.auto().llm(base_prompt="...")
-
-# ✅ correct
-client.auto().llm(
-    base_prompt="...",
-    symptoms=["inconsistent_outputs"],
-    severity="medium"
-)
-```
-
----
-
-### Wrong scope
-
-* using `step` for simple prompts
-* using `llm` inside agent loops
+AegisResult is a control/observability contract, not a guarantee of downstream model execution output.
 
 ---
 
 ## Summary
 
-The SDK provides:
-
-* a clean scope-based interface
-* automatic backend compatibility
-* structured runtime outputs
-
-It is the **primary integration point for Aegis**.
+The SDK exposes one consistent interface across all five scopes and returns a common `AegisResult` for runtime control integration.
