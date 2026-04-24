@@ -12,6 +12,8 @@ client.auto().<scope>(...)
 
 Available scopes: `llm`, `rag`, `step`, `context`, `agent`.
 
+For exact request payload fields/defaults, see [Request Shapes](./request-shapes.md).
+
 ---
 
 ## LLM Scope

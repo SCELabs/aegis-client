@@ -450,6 +450,7 @@ Docs in `/docs` explain:
 
 * architecture
 * scopes
+* [Request Shapes](./docs/request-shapes.md)
 * result behavior
 * integration guidance
 * migration and usage patterns

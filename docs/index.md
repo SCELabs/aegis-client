@@ -81,6 +81,7 @@ Current public auto routes:
 
 * [Architecture](./architecture.md)
 * [Scopes](./scopes.md)
+* [Request Shapes](./request-shapes.md)
 * [Result Model](./result-model.md)
 * [Integration Patterns](./integration-patterns.md)
 * [Migration Guide](./legacy-and-migration.md)
@@ -91,3 +92,5 @@ Current public auto routes:
 ## Summary
 
 Aegis stabilizes runtime behavior by returning structured control decisions your existing system can apply safely.
+
+For implementation details, read [Request Shapes](./request-shapes.md) next.
