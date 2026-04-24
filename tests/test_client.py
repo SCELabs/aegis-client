@@ -62,6 +62,73 @@ class TestAegisResult(unittest.TestCase):
         self.assertFalse(result.used_fallback)
         self.assertEqual(result.scope_data, {})
 
+    def test_summary_and_summary_lines(self):
+        result = AegisResult(
+            scope="rag",
+            actions=[{"type": "expand"}, {"type": "prune"}],
+            trace=[{"event": "start"}],
+            used_fallback=False,
+            explanation="Kept only relevant chunks.",
+            metrics={
+                "retrieved_context_count_before_context_control": 12,
+                "retrieved_context_count_after_context_control": 6,
+            },
+        )
+
+        lines = result.summary_lines()
+        self.assertIsInstance(lines, list)
+        self.assertTrue(all(isinstance(line, str) for line in lines))
+        self.assertGreaterEqual(len(lines), 1)
+        self.assertTrue(any("Fallback: no" in line for line in lines))
+        self.assertTrue(any("Actions: 2 runtime controls" in line for line in lines))
+
+        summary_text = result.summary()
+        self.assertIsInstance(summary_text, str)
+        self.assertIn("Scope: rag", summary_text)
+
+    def test_context_summary_includes_context_or_carry_forward_details(self):
+        result = AegisResult(
+            scope="context",
+            metrics={
+                "carry_forward_count": 3,
+                "output_message_count": 4,
+                "output_tool_result_count": 1,
+            },
+            scope_data={
+                "cleaned_messages": [{"role": "user", "content": "Hi"}],
+                "cleaned_tool_results": [{"tool": "search", "ok": True}],
+            },
+        )
+
+        summary_text = result.summary()
+        self.assertIn("Scope: context", summary_text)
+        self.assertTrue(
+            "carry-forward=3" in summary_text or "cleaned messages=1" in summary_text
+        )
+
+    def test_agent_summary_includes_stop_reason(self):
+        result = AegisResult(
+            scope="agent",
+            scope_data={
+                "agent_runtime": {
+                    "stop_reason": "goal_reached",
+                    "step_count": 5,
+                    "tool_call_count": 2,
+                }
+            },
+        )
+
+        summary_text = result.summary()
+        self.assertIn("Scope: agent", summary_text)
+        self.assertIn("stop_reason=goal_reached", summary_text)
+
+    def test_debug_summary_unchanged_shape(self):
+        result = AegisResult(scope="llm", actions=[{"type": "retry"}], trace=[{}], used_fallback=True)
+        self.assertEqual(
+            result.debug_summary(),
+            "scope=llm actions=1 trace_steps=1 used_fallback=yes",
+        )
+
 
 class TestAegisClient(unittest.TestCase):
     def setUp(self):

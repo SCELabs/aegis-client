@@ -377,9 +377,14 @@ You apply the returned controlled context in your downstream system.
 ## Debugging
 
 ```python
+print(result.summary())
 print(result.debug_summary())
 print(result.to_dict())
 ```
+
+`summary()` is for human-readable inspection.
+`to_dict()` is for raw structured output.
+`debug_summary()` is compact.
 
 Useful fields:
 
