@@ -89,8 +89,17 @@ Current public auto routes:
 
 ---
 
+## Examples
+
+* [OpenAI LLM Control](./examples/openai_llm.md)
+* [RAG Pipeline](./examples/rag_pipeline.md)
+* [Agent Workflow](./examples/agent_workflow.md)
+
+---
+
 ## Summary
 
 Aegis stabilizes runtime behavior by returning structured control decisions your existing system can apply safely.
 
 For implementation details, read [Request Shapes](./request-shapes.md) next.
+Then use [OpenAI LLM Control](./examples/openai_llm.md) as a practical starting point.

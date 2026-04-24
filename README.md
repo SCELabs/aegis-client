@@ -457,6 +457,14 @@ Docs in `/docs` explain:
 
 ---
 
+## Examples
+
+* [OpenAI LLM Control](./docs/examples/openai_llm.md)
+* [RAG Pipeline](./docs/examples/rag_pipeline.md)
+* [Agent Workflow](./docs/examples/agent_workflow.md)
+
+---
+
 ## Status
 
 * Stable SDK surface
