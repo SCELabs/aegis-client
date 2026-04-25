@@ -24,7 +24,7 @@ from .config import (
     resolve_runtime_config,
 )
 from .observe import RepoObservation, collect_repo_observation
-from .session import append_auto_event, read_all_session_events
+from .session import append_auto_event, read_all_session_events, session_log_path
 
 CALL_COST_USD = 0.20
 DEFAULT_INTERVAL_SECONDS = 3.0
@@ -33,6 +33,7 @@ DEFAULT_SCOPE_SPIKE_THRESHOLD = 3
 DIFF_GROWTH_MULTIPLIER = 1.5
 NO_ISSUES_FEEDBACK_SECONDS = 10.0
 ESCALATION_STATUS_INTERVAL_SECONDS = 8.0
+HEARTBEAT_STALE_SECONDS = 15.0
 
 
 def _utc_now_iso() -> str:
@@ -433,6 +434,8 @@ def start_auto_mode_background(
             "mode": "background",
             "pid": proc.pid,
             "started_at": now,
+            "last_heartbeat_at": now,
+            "interval_seconds": max(2.0, min(interval_seconds, 5.0)),
             "project_path": repo_cwd,
         },
         cwd=cwd,
@@ -662,14 +665,20 @@ def _render_decision_output(
         lines.extend(_render_structured_control(control))
 
     lines.append("[Aegis] Impact:")
+    lines.append(f"[Aegis] - Estimated AI iterations avoided: {signal.estimated_calls_avoided}")
     if impact_estimate.get("activity_detected"):
         low = int(impact_estimate.get("calls_avoided_low", signal.estimated_calls_avoided))
         high = int(impact_estimate.get("calls_avoided_high", signal.estimated_calls_avoided))
-        saved_cost = float(impact_estimate.get("estimated_cost_saved", signal.estimated_cost_saved))
-        lines.append(f"[Aegis] - Avoided {low}-{high} unnecessary retries")
-        lines.append(f"[Aegis] - Estimated savings: ~${saved_cost:.2f}")
+        lines.append(f"[Aegis] - Prevented {low}-{high} unnecessary retries")
     else:
-        lines.append("[Aegis] - Potentially avoiding wasted retries")
+        lines.append("[Aegis] - Prevented retries: range unavailable until repeated activity is detected")
+
+    changed_files = signal.details.get("changed_files")
+    if not isinstance(changed_files, int):
+        changed_files = impact_estimate.get("changed_file_count")
+    max_files = control.get("max_files")
+    if isinstance(changed_files, int) and isinstance(max_files, int):
+        lines.append(f"[Aegis] - Reduced scope from {changed_files} files to {max_files}")
 
     if escalation in {"medium", "high"}:
         lines.extend(
@@ -846,6 +855,7 @@ def _process_signal_candidate(
         "calls_avoided_high": calls_high,
         "estimated_cost_saved": signal.estimated_cost_saved,
         "activity_detected": activity_detected,
+        "changed_file_count": observation.changed_file_count,
     }
 
     decision_event = {
@@ -902,31 +912,41 @@ def run_auto_mode(
     if not preflight.get("can_run"):
         return 1
 
-    state = read_auto_state(cwd=cwd)
+    startup_state = read_auto_state(cwd=cwd)
+    project_path = _resolve_project_path(cwd=cwd, state=startup_state)
+    state = read_auto_state(cwd=project_path)
     if state.get("running") and not state.get("stop_requested") and not background_worker:
         print("[Aegis] Auto mode is already running.")
         return 0
 
     session_id = str(uuid.uuid4())
     now = _utc_now_iso()
+    mode = "background" if background_worker else "foreground"
+    bounded_interval = max(2.0, min(interval_seconds, 5.0))
     write_auto_state(
         {
             "running": True,
             "stop_requested": False,
             "session_id": session_id,
             "started_at": now,
+            "last_heartbeat_at": now,
             "last_session_id": session_id,
-            "mode": "background" if background_worker else "foreground",
+            "mode": mode,
             "pid": os.getpid(),
-            "project_path": str(Path(cwd) if cwd is not None else Path.cwd()),
+            "interval_seconds": bounded_interval,
+            "project_path": str(project_path),
         },
-        cwd=cwd,
+        cwd=project_path,
     )
     append_auto_event(
-        event_type="auto_session_started",
-        details={"interval_seconds": interval_seconds, "mode": "background" if background_worker else "foreground"},
+        event_type="auto_started",
+        details={
+            "interval_seconds": bounded_interval,
+            "mode": mode,
+            "project_path": str(project_path),
+        },
         session_id=session_id,
-        cwd=cwd,
+        cwd=project_path,
     )
     if not background_worker:
         print(_startup_banner())
@@ -939,13 +959,30 @@ def run_auto_mode(
     display_state: dict[str, dict[str, Any]] = {}
     try:
         while True:
-            live_state = read_auto_state(cwd=cwd)
+            live_state = read_auto_state(cwd=project_path)
             if live_state.get("stop_requested"):
                 break
 
+            heartbeat_time = _utc_now_iso()
+            updated_state = dict(live_state)
+            updated_state.update(
+                {
+                    "running": True,
+                    "session_id": session_id,
+                    "started_at": now,
+                    "last_heartbeat_at": heartbeat_time,
+                    "last_session_id": session_id,
+                    "mode": mode,
+                    "pid": os.getpid(),
+                    "interval_seconds": bounded_interval,
+                    "project_path": str(project_path),
+                }
+            )
+            write_auto_state(updated_state, cwd=project_path)
+
             try:
                 previous = engine.previous_snapshot
-                observation = collect_repo_observation(cwd=str(cwd) if cwd is not None else None)
+                observation = collect_repo_observation(cwd=str(project_path))
                 signals = engine.evaluate(observation)
                 for signal in signals:
                     outcome = _process_signal_candidate(
@@ -956,7 +993,7 @@ def run_auto_mode(
                         session_id=session_id,
                         issue_counts=issue_counts,
                         verbose=verbose,
-                        cwd=cwd,
+                        cwd=project_path,
                     )
                     emit, output = _should_emit_signal_output(
                         outcome=outcome,
@@ -976,7 +1013,7 @@ def run_auto_mode(
             except Exception as exc:
                 print(f"[Aegis] Temporary auto-mode error: {exc.__class__.__name__}. Continuing monitoring.")
 
-            time.sleep(max(2.0, min(interval_seconds, 5.0)))
+            time.sleep(bounded_interval)
     except KeyboardInterrupt:
         pass
     finally:
@@ -987,19 +1024,21 @@ def run_auto_mode(
                 "stop_requested": False,
                 "session_id": session_id,
                 "started_at": now,
+                "last_heartbeat_at": _utc_now_iso(),
                 "stopped_at": stopped_at,
                 "last_session_id": session_id,
-                "mode": "background" if background_worker else "foreground",
+                "mode": mode,
                 "pid": os.getpid(),
-                "project_path": str(Path(cwd) if cwd is not None else Path.cwd()),
+                "interval_seconds": bounded_interval,
+                "project_path": str(project_path),
             },
-            cwd=cwd,
+            cwd=project_path,
         )
         append_auto_event(
-            event_type="auto_session_stopped",
+            event_type="auto_stopped",
             details={},
             session_id=session_id,
-            cwd=cwd,
+            cwd=project_path,
         )
         if not background_worker:
             print("[Aegis] Auto mode stopped.")
@@ -1013,6 +1052,75 @@ def _parse_iso(value: Any) -> datetime | None:
         return datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         return None
+
+
+def _resolve_project_path(*, cwd: str | Path | None, state: dict[str, Any] | None = None) -> Path:
+    if state is not None:
+        project_path = state.get("project_path")
+        if isinstance(project_path, str) and project_path.strip():
+            return Path(project_path)
+    if cwd is not None:
+        return Path(cwd)
+    return Path.cwd()
+
+
+def _heartbeat_deadline_seconds(state: dict[str, Any]) -> float:
+    interval = state.get("interval_seconds")
+    try:
+        interval_value = float(interval)
+    except (TypeError, ValueError):
+        interval_value = DEFAULT_INTERVAL_SECONDS
+    return max(HEARTBEAT_STALE_SECONDS, interval_value * 3.0)
+
+
+def _heartbeat_age_seconds(*, state: dict[str, Any], now: datetime | None = None) -> float | None:
+    heartbeat_raw = state.get("last_heartbeat_at")
+    heartbeat_time = _parse_iso(heartbeat_raw)
+    if heartbeat_time is None:
+        return None
+    current_time = now or datetime.now(timezone.utc)
+    return max(0.0, (current_time - heartbeat_time).total_seconds())
+
+
+def _is_heartbeat_stale(*, state: dict[str, Any], now: datetime | None = None) -> bool:
+    age = _heartbeat_age_seconds(state=state, now=now)
+    if age is None:
+        return False
+    return age > _heartbeat_deadline_seconds(state)
+
+
+def _worker_running_status(state: dict[str, Any]) -> str:
+    pid = state.get("pid")
+    if not state.get("running"):
+        return "no"
+    if isinstance(pid, int):
+        pid_state = _is_pid_running(pid)
+        if pid_state is True:
+            return "yes"
+        if pid_state is False:
+            return "no"
+        return "unknown"
+    return "unknown"
+
+
+def _worker_health_status(*, state: dict[str, Any], running_status: str) -> str:
+    if running_status != "yes":
+        if running_status == "no":
+            return "no"
+        return "unknown"
+    age = _heartbeat_age_seconds(state=state)
+    if age is None:
+        return "unknown"
+    if _is_heartbeat_stale(state=state):
+        return "no"
+    return "yes"
+
+
+def _monitoring_active(*, state: dict[str, Any]) -> bool:
+    running_status = _worker_running_status(state)
+    if running_status != "yes":
+        return False
+    return _worker_health_status(state=state, running_status=running_status) == "yes"
 
 
 def _duration_minutes(events: list[dict[str, Any]]) -> int:
@@ -1035,7 +1143,14 @@ def aggregate_auto_metrics(events: list[dict[str, Any]], *, session_id: str | No
         event_session_id = event.get("session_id")
         if session_id is not None and event_session_id != session_id:
             continue
-        if event.get("type") in {"auto_session_started", "auto_session_stopped", "local_signal", "aegis_decision"}:
+        if event.get("type") in {
+            "auto_started",
+            "auto_stopped",
+            "auto_session_started",
+            "auto_session_stopped",
+            "local_signal",
+            "aegis_decision",
+        }:
             scoped.append(event)
 
     loop_signals = 0
@@ -1108,7 +1223,20 @@ def aggregate_auto_metrics(events: list[dict[str, Any]], *, session_id: str | No
 
 
 def latest_auto_session_id(events: list[dict[str, Any]]) -> str | None:
-    auto_events = [event for event in events if isinstance(event.get("session_id"), str)]
+    auto_events = [
+        event
+        for event in events
+        if isinstance(event.get("session_id"), str)
+        and event.get("type")
+        in {
+            "auto_started",
+            "auto_stopped",
+            "auto_session_started",
+            "auto_session_stopped",
+            "local_signal",
+            "aegis_decision",
+        }
+    ]
     if not auto_events:
         return None
     auto_events.sort(key=lambda e: str(e.get("timestamp", "")))
@@ -1118,6 +1246,8 @@ def latest_auto_session_id(events: list[dict[str, Any]]) -> str | None:
 def _status_event_label(event: dict[str, Any]) -> str:
     event_type = str(event.get("type", ""))
     details = event.get("details") or {}
+    if event_type in {"auto_started", "auto_session_started"}:
+        return "Monitoring session started"
     if event_type == "local_signal":
         return _signal_label(str(details.get("signal_type", "")))
     if event_type == "aegis_decision":
@@ -1132,30 +1262,76 @@ def _times_label(count: int) -> str:
     return f"{count} {suffix}"
 
 
+def _summary_retry_line(metrics: AutoMetrics) -> str:
+    if metrics.estimated_calls_saved <= 0:
+        return "[Aegis] - Prevented retries: none observed"
+    if metrics.loop_signals > 0:
+        low = metrics.loop_signals * 2
+        high = metrics.loop_signals * 4
+        return f"[Aegis] - Prevented {low}-{high} unnecessary retries"
+    return f"[Aegis] - Prevented at least {metrics.estimated_calls_saved} unnecessary retries"
+
+
+def _find_scope_reduction_line(
+    events: list[dict[str, Any]],
+    *,
+    session_id: str | None = None,
+) -> str:
+    for index in range(len(events) - 1, -1, -1):
+        event = events[index]
+        if session_id is not None and event.get("session_id") != session_id:
+            continue
+        if event.get("type") != "aegis_decision":
+            continue
+        details = event.get("details") or {}
+        control = details.get("control") or {}
+        suggested = control.get("max_files")
+        if not isinstance(suggested, int):
+            continue
+
+        changed_files: int | None = None
+        for back_index in range(index - 1, -1, -1):
+            prior = events[back_index]
+            if session_id is not None and prior.get("session_id") != session_id:
+                continue
+            if prior.get("type") != "local_signal":
+                continue
+            prior_details = prior.get("details") or {}
+            signal_details = prior_details.get("signal_details") or {}
+            raw_changed = signal_details.get("changed_files")
+            if isinstance(raw_changed, int):
+                changed_files = raw_changed
+                break
+            repo_observation = prior_details.get("repo_observation") or {}
+            raw_repo_changed = repo_observation.get("changed_file_count")
+            if isinstance(raw_repo_changed, int):
+                changed_files = raw_repo_changed
+                break
+        if isinstance(changed_files, int):
+            return f"[Aegis] - Reduced scope from {changed_files} files to {suggested}"
+    return "[Aegis] - Scope reduction: no scope-limiting intervention recorded"
+
+
 def render_status(*, cwd: str | Path | None = None) -> str:
     state = read_auto_state(cwd=cwd)
-    observation = collect_repo_observation(cwd=str(cwd) if cwd is not None else None)
-    events = read_all_session_events(cwd=cwd)
+    project_path = state.get("project_path") or str(Path(cwd) if cwd is not None else Path.cwd())
+    observation = collect_repo_observation(cwd=project_path)
+    events = read_all_session_events(cwd=project_path)
     latest_event = None
     for event in reversed(events):
-        if event.get("type") in {"local_signal", "aegis_decision"}:
+        if event.get("type") in {"local_signal", "aegis_decision", "auto_started", "auto_session_started"}:
             latest_event = event
             break
 
+    project_session_log = session_log_path(cwd=project_path)
     pid = state.get("pid")
-    running_flag = bool(state.get("running"))
-    running_label = "no"
-    if running_flag:
-        if isinstance(pid, int):
-            pid_state = _is_pid_running(pid)
-            if pid_state is True:
-                running_label = "yes"
-            elif pid_state is False:
-                running_label = "no"
-            else:
-                running_label = "unknown (PID recorded, process check unavailable)"
-        else:
-            running_label = "unknown"
+    running_status = _worker_running_status(state)
+    running_label = running_status
+    if running_status == "unknown" and isinstance(pid, int):
+        running_label = "unknown (PID recorded, process check unavailable)"
+    heartbeat = state.get("last_heartbeat_at")
+    heartbeat_label = str(heartbeat) if isinstance(heartbeat, str) and heartbeat else "none"
+    worker_health = _worker_health_status(state=state, running_status=running_status)
 
     mode_label = str(state.get("mode", "unknown"))
     if latest_event is not None and latest_event.get("type") == "aegis_decision":
@@ -1167,7 +1343,9 @@ def render_status(*, cwd: str | Path | None = None) -> str:
         f"[Aegis] Auto mode running: {running_label}",
         f"[Aegis] Mode: {mode_label}",
         f"[Aegis] PID: {pid if isinstance(pid, int) else 'none'}",
-        f"[Aegis] Project path: {state.get('project_path') or str(Path(cwd) if cwd is not None else Path.cwd())}",
+        f"[Aegis] Last heartbeat: {heartbeat_label}",
+        f"[Aegis] Worker healthy: {worker_health}",
+        f"[Aegis] Project path: {project_path}",
         f"[Aegis] Branch: {observation.branch}",
         f"[Aegis] Changed files: {observation.changed_file_count}",
         "[Aegis] Diff summary: "
@@ -1175,20 +1353,36 @@ def render_status(*, cwd: str | Path | None = None) -> str:
         f"{observation.diff_summary.get('insertions', 0)} insertions, "
         f"{observation.diff_summary.get('deletions', 0)} deletions",
     ]
+    if isinstance(pid, int) and _is_heartbeat_stale(state=state):
+        lines.append("[Aegis] Auto mode may not be active. Run aegis start again.")
+    elif running_status == "unknown":
+        lines.append("[Aegis] Worker status unknown. Run aegis start again to re-establish monitoring.")
+    elif worker_health == "unknown":
+        lines.append("[Aegis] Worker health unknown. Run aegis start again to re-establish monitoring.")
     if latest_event is None:
         lines.append("[Aegis] Last event: none")
     else:
         lines.append(f"[Aegis] Last event: {_status_event_label(latest_event)}")
+    lines.append(f"[Aegis] Session log path: {project_session_log}")
     return "\n".join(lines)
 
 
 def render_summary(*, cwd: str | Path | None = None) -> str:
-    events = read_all_session_events(cwd=cwd)
+    state = read_auto_state(cwd=cwd)
+    project_path = state.get("project_path") or str(Path(cwd) if cwd is not None else Path.cwd())
+    events = read_all_session_events(cwd=project_path)
     session_id = latest_auto_session_id(events)
     if session_id is None:
-        return "[Aegis] No auto-mode session events found."
+        if _monitoring_active(state=state):
+            return "[Aegis] Monitoring active. No instability events detected yet."
+        return "[Aegis] No active monitoring session found. Run aegis start."
 
     metrics = aggregate_auto_metrics(events, session_id=session_id)
+    if metrics.local_signal_count == 0 and metrics.aegis_decision_count == 0:
+        if _monitoring_active(state=state):
+            return "[Aegis] Monitoring active. No instability events detected yet."
+        return "[Aegis] No active monitoring session found. Run aegis start."
+
     lines = [
         "[Aegis] Aegis Summary (Session)",
         "",
@@ -1204,8 +1398,9 @@ def render_summary(*, cwd: str | Path | None = None) -> str:
         f"[Aegis] - Escalations: {metrics.escalation_count}",
         "",
         "[Aegis] Impact:",
-        f"[Aegis] - Estimated calls saved: {metrics.estimated_calls_saved}",
-        f"[Aegis] - Estimated cost saved: ${metrics.estimated_cost_saved:.2f}",
+        f"[Aegis] - Estimated AI iterations avoided: {metrics.estimated_calls_saved}",
+        _summary_retry_line(metrics),
+        _find_scope_reduction_line(events, session_id=session_id),
         "",
         "[Aegis] Recommendation:",
         f"[Aegis] {metrics.notes[0]}",
@@ -1235,7 +1430,8 @@ def render_stats(*, cwd: str | Path | None = None) -> str:
         f"[Aegis] - Escalations: {metrics.escalation_count}",
         "",
         "[Aegis] Impact:",
-        f"[Aegis] - Estimated calls saved: {metrics.estimated_calls_saved}",
-        f"[Aegis] - Estimated cost saved: ${metrics.estimated_cost_saved:.2f}",
+        f"[Aegis] - Estimated AI iterations avoided: {metrics.estimated_calls_saved}",
+        _summary_retry_line(metrics),
+        _find_scope_reduction_line(events),
     ]
     return "\n".join(lines)

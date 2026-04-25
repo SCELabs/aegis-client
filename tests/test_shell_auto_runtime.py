@@ -44,6 +44,7 @@ class TestAutoRuntimeHardening(unittest.TestCase):
                 "aegis.shell.auto.read_auto_state",
                 side_effect=[
                     {"running": False},
+                    {"running": False},
                     {"running": True, "stop_requested": False},
                     {"running": True, "stop_requested": False},
                     {"running": True, "stop_requested": False},
@@ -70,7 +71,11 @@ class TestAutoRuntimeHardening(unittest.TestCase):
             patch("aegis.shell.auto.write_auto_state") as mock_write_state,
             patch(
                 "aegis.shell.auto.read_auto_state",
-                side_effect=[{"running": True, "stop_requested": True}, {"running": True, "stop_requested": True}],
+                side_effect=[
+                    {"running": True, "stop_requested": True},
+                    {"running": True, "stop_requested": True},
+                    {"running": True, "stop_requested": True},
+                ],
             ),
         ):
             buffer = io.StringIO()
@@ -94,6 +99,7 @@ class TestAutoRuntimeHardening(unittest.TestCase):
             patch(
                 "aegis.shell.auto.read_auto_state",
                 side_effect=[
+                    {"running": False},
                     {"running": False},
                     {"running": True, "stop_requested": False},
                     {"running": True, "stop_requested": False},
@@ -125,6 +131,7 @@ class TestAutoRuntimeHardening(unittest.TestCase):
             patch(
                 "aegis.shell.auto.read_auto_state",
                 side_effect=[
+                    {"running": False},
                     {"running": False},
                     {"running": True, "stop_requested": False},
                     {"running": False, "stop_requested": False},
@@ -159,6 +166,7 @@ class TestAutoRuntimeHardening(unittest.TestCase):
                 "aegis.shell.auto.read_auto_state",
                 side_effect=[
                     {"running": False},
+                    {"running": False},
                     {"running": True, "stop_requested": False},
                     {"running": True, "stop_requested": False},
                     {"running": True, "stop_requested": True},
@@ -177,3 +185,29 @@ class TestAutoRuntimeHardening(unittest.TestCase):
         self.assertIn("[Aegis] Temporary auto-mode error", buffer.getvalue())
         self.assertTrue(mock_write_state.called)
         self.assertTrue(mock_append.called)
+
+    def test_background_worker_writes_heartbeat_to_auto_state(self):
+        with (
+            patch("aegis.shell.auto.preflight_check", return_value={"can_run": True}),
+            patch("aegis.shell.auto.append_auto_event") as mock_append,
+            patch("aegis.shell.auto.time.sleep"),
+            patch("aegis.shell.auto._build_client", return_value=Mock()),
+            patch("aegis.shell.auto.collect_repo_observation", return_value=_observation(changed_files=0, files_changed=0, insertions=0)),
+            patch("aegis.shell.auto.write_auto_state") as mock_write_state,
+            patch(
+                "aegis.shell.auto.read_auto_state",
+                side_effect=[
+                    {"running": False},
+                    {"running": False},
+                    {"running": True, "stop_requested": False, "project_path": "C:/repo"},
+                    {"running": True, "stop_requested": True, "project_path": "C:/repo"},
+                ],
+            ),
+        ):
+            rc = run_auto_mode(interval_seconds=2.0, cwd="C:/repo", background_worker=True)
+
+        self.assertEqual(rc, 0)
+        write_payloads = [call.args[0] for call in mock_write_state.call_args_list]
+        self.assertTrue(any("last_heartbeat_at" in payload for payload in write_payloads))
+        self.assertTrue(any(payload.get("interval_seconds") == 2.0 for payload in write_payloads))
+        self.assertEqual(mock_append.call_args_list[0].kwargs["event_type"], "auto_started")

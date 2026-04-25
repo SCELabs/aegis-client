@@ -186,16 +186,25 @@ class TestDoctorResetStartStopStatus(unittest.TestCase):
     def test_status_shows_background_state(
         self, mock_read_state, mock_pid_running, mock_collect, mock_events
     ):
-        mock_read_state.return_value = {"running": True, "mode": "background", "pid": 99, "project_path": "C:/repo"}
+        mock_read_state.return_value = {
+            "running": True,
+            "mode": "background",
+            "pid": 99,
+            "project_path": "C:/repo",
+            "last_heartbeat_at": "2099-01-01T00:00:00+00:00",
+        }
         mock_pid_running.return_value = True
         mock_collect.return_value = _observation(changed_files=1, files_changed=1, insertions=2)
-        mock_events.return_value = [{"type": "aegis_decision", "details": {"source": "aegis_api"}}]
+        mock_events.return_value = [{"type": "auto_started", "details": {}}]
 
         output = render_status(cwd="C:/repo")
         self.assertIn("Auto mode running: yes", output)
         self.assertIn("Mode: background", output)
         self.assertIn("PID: 99", output)
+        self.assertIn("Last heartbeat: 2099-01-01T00:00:00+00:00", output)
+        self.assertIn("Worker healthy: yes", output)
         self.assertIn("Project path: C:/repo", output)
+        self.assertIn("Session log path:", output)
 
     @patch("aegis.shell.auto.read_all_session_events")
     @patch("aegis.shell.auto.collect_repo_observation")
@@ -214,6 +223,33 @@ class TestDoctorResetStartStopStatus(unittest.TestCase):
             "Auto mode running: unknown (PID recorded, process check unavailable)",
             output,
         )
+        self.assertIn(
+            "Worker status unknown. Run aegis start again to re-establish monitoring.",
+            output,
+        )
+
+    @patch("aegis.shell.auto.read_all_session_events")
+    @patch("aegis.shell.auto.collect_repo_observation")
+    @patch("aegis.shell.auto._is_pid_running")
+    @patch("aegis.shell.auto.read_auto_state")
+    def test_status_stale_heartbeat_reports_actionable_message(
+        self, mock_read_state, mock_pid_running, mock_collect, mock_events
+    ):
+        mock_read_state.return_value = {
+            "running": True,
+            "mode": "background",
+            "pid": 55,
+            "project_path": "C:/repo",
+            "last_heartbeat_at": "2000-01-01T00:00:00+00:00",
+            "interval_seconds": 2.0,
+        }
+        mock_pid_running.return_value = True
+        mock_collect.return_value = _observation(changed_files=1, files_changed=1, insertions=1)
+        mock_events.return_value = []
+        output = render_status(cwd="C:/repo")
+
+        self.assertIn("Worker healthy: no", output)
+        self.assertIn("[Aegis] Auto mode may not be active. Run aegis start again.", output)
 
 
 class TestWorkerReliability(unittest.TestCase):
@@ -238,6 +274,7 @@ class TestWorkerReliability(unittest.TestCase):
     ):
         mock_preflight.return_value = {"can_run": True}
         mock_read_state.side_effect = [
+            {"running": False},
             {"running": False},
             {"running": True, "stop_requested": False},
             {"running": True, "stop_requested": True},
@@ -267,3 +304,62 @@ class TestWorkerReliability(unittest.TestCase):
 
         self.assertTrue(summary.startswith("[Aegis]"))
         self.assertTrue(stats.startswith("[Aegis]"))
+        self.assertNotIn("$", summary)
+        self.assertNotIn("$", stats)
+
+    @patch("aegis.shell.auto._is_pid_running")
+    @patch("aegis.shell.auto.read_auto_state")
+    def test_summary_reports_active_monitoring_without_events(self, mock_read_state, mock_pid_running):
+        mock_read_state.return_value = {
+            "running": True,
+            "pid": 333,
+            "last_heartbeat_at": "2099-01-01T00:00:00+00:00",
+            "project_path": "C:/repo",
+        }
+        mock_pid_running.return_value = True
+        with patch("aegis.shell.auto.read_all_session_events", return_value=[]):
+            output = render_summary(cwd="C:/repo")
+
+        self.assertEqual(output, "[Aegis] Monitoring active. No instability events detected yet.")
+
+    @patch("aegis.shell.auto._is_pid_running")
+    @patch("aegis.shell.auto.read_auto_state")
+    def test_summary_reports_no_active_session_when_not_running(self, mock_read_state, mock_pid_running):
+        mock_read_state.return_value = {"running": False, "pid": 0, "project_path": "C:/repo"}
+        mock_pid_running.return_value = False
+        with patch("aegis.shell.auto.read_all_session_events", return_value=[]):
+            output = render_summary(cwd="C:/repo")
+
+        self.assertEqual(output, "[Aegis] No active monitoring session found. Run aegis start.")
+
+    @patch("aegis.shell.auto.preflight_check")
+    @patch("aegis.shell.auto._build_client")
+    @patch("aegis.shell.auto.collect_repo_observation")
+    @patch("aegis.shell.auto.time.sleep")
+    def test_worker_session_log_stays_project_local(self, mock_sleep, mock_collect, mock_build_client, mock_preflight):
+        mock_preflight.return_value = {"can_run": True}
+        mock_build_client.return_value = Mock()
+        mock_collect.return_value = _observation(changed_files=0, files_changed=0, insertions=0)
+        mock_sleep.return_value = None
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_a = Path(tmpdir) / "project-a"
+            project_b = Path(tmpdir) / "project-b"
+            project_a.mkdir(parents=True, exist_ok=True)
+            project_b.mkdir(parents=True, exist_ok=True)
+            with patch(
+                "aegis.shell.auto.read_auto_state",
+                side_effect=[
+                    {"running": False, "project_path": str(project_a)},
+                    {"running": False, "project_path": str(project_a)},
+                    {"running": True, "stop_requested": False, "project_path": str(project_a)},
+                    {"running": True, "stop_requested": True, "project_path": str(project_a)},
+                ],
+            ):
+                rc = run_auto_mode(interval_seconds=2.0, cwd=project_a, background_worker=True)
+                self.assertEqual(rc, 0)
+
+            session_a = project_a / ".aegis" / "session.jsonl"
+            session_b = project_b / ".aegis" / "session.jsonl"
+            self.assertTrue(session_a.exists())
+            self.assertFalse(session_b.exists())

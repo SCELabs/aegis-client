@@ -60,7 +60,7 @@ class TestAutoHeuristics(unittest.TestCase):
         self.assertIn("No progress detected across multiple iterations", output)
         self.assertNotIn("highest overall score", output)
 
-    def test_impact_is_suppressed_when_no_activity(self):
+    def test_impact_is_observable_when_no_activity(self):
         engine = AutoHeuristicEngine()
         engine.evaluate(_observation(changed_files=1, files_changed=1, insertions=3))
         engine.evaluate(_observation(changed_files=1, files_changed=1, insertions=3))
@@ -85,8 +85,10 @@ class TestAutoHeuristics(unittest.TestCase):
         )
 
         self.assertIn("Impact:", output)
-        self.assertIn("Potentially avoiding wasted retries", output)
-        self.assertNotIn("Estimated savings", output)
+        self.assertIn("Estimated AI iterations avoided: 3", output)
+        self.assertIn("Prevented retries: range unavailable", output)
+        self.assertIn("Reduced scope from 1 files to 3", output)
+        self.assertNotIn("$", output)
 
 
 class TestNoiseSuppression(unittest.TestCase):
@@ -194,7 +196,7 @@ class TestLoggingAndSummary(unittest.TestCase):
         self.assertIn("escalation", decision)
         self.assertIn("impact_estimate", decision)
 
-    def test_summary_uses_activity_for_savings(self):
+    def test_summary_uses_activity_for_observable_impact(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             cwd = Path(tmpdir)
             append_auto_event(
@@ -215,8 +217,10 @@ class TestLoggingAndSummary(unittest.TestCase):
             )
             output = render_summary(cwd=cwd)
 
-        self.assertIn("Estimated calls saved: 0", output)
-        self.assertIn("Estimated cost saved: $0.00", output)
+        self.assertIn("Estimated AI iterations avoided: 0", output)
+        self.assertIn("Prevented retries: none observed", output)
+        self.assertIn("Scope reduction: no scope-limiting intervention recorded", output)
+        self.assertNotIn("$", output)
         self.assertNotIn("{", output)
 
     def test_summary_pluralization_uses_time_for_one(self):
@@ -242,6 +246,24 @@ class TestLoggingAndSummary(unittest.TestCase):
 
         self.assertIn("Loop detected (1 time)", output)
         self.assertIn("Scope drift detected (0 times)", output)
+
+    def test_summary_uses_auto_started_for_active_session_without_signals(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cwd = Path(tmpdir)
+            append_auto_event(
+                event_type="auto_started",
+                details={"project_path": str(cwd)},
+                session_id="sess-started",
+                cwd=cwd,
+            )
+            (cwd / ".aegis" / "auto_state.json").write_text(
+                '{"running": true, "pid": 99, "last_heartbeat_at": "2099-01-01T00:00:00+00:00"}',
+                encoding="utf-8",
+            )
+            with unittest.mock.patch("aegis.shell.auto._is_pid_running", return_value=True):
+                output = render_summary(cwd=cwd)
+
+        self.assertEqual(output, "[Aegis] Monitoring active. No instability events detected yet.")
 
     def test_structured_control_hidden_by_default_and_shown_in_verbose(self):
         engine = AutoHeuristicEngine()
