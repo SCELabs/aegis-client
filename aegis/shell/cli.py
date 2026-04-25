@@ -9,6 +9,16 @@ import requests
 
 from aegis import AegisClient
 
+from .auto import (
+    render_doctor,
+    render_stats,
+    render_status,
+    render_summary,
+    reset_project_runtime,
+    run_auto_mode,
+    start_auto_mode_background,
+    stop_auto_mode,
+)
 from .config import DEFAULT_BASE_URL, ENV_BASE_URL, resolve_runtime_config, write_user_config
 from .observe import RepoObservation, collect_repo_observation
 from .prompts import prompt_email
@@ -36,6 +46,57 @@ def _build_parser() -> argparse.ArgumentParser:
 
     handoff_parser = subparsers.add_parser("handoff", help="Create a markdown handoff file")
     handoff_parser.set_defaults(handler=_handle_handoff)
+
+    auto_parser = subparsers.add_parser("auto", help="Run auto mode observation loop")
+    auto_parser.add_argument(
+        "--interval",
+        type=float,
+        default=3.0,
+        help="Polling interval in seconds (bounded to 2-5s)",
+    )
+    auto_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Show structured control details in auto-mode output",
+    )
+    auto_parser.add_argument(
+        "--background-worker",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    auto_parser.set_defaults(handler=_handle_auto)
+
+    start_parser = subparsers.add_parser("start", help="Start auto mode in the background")
+    start_parser.add_argument(
+        "--interval",
+        type=float,
+        default=3.0,
+        help="Polling interval in seconds (bounded to 2-5s)",
+    )
+    start_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Show structured control details in background worker output",
+    )
+    start_parser.set_defaults(handler=_handle_start)
+
+    stop_parser = subparsers.add_parser("stop", help="Stop auto mode loop")
+    stop_parser.set_defaults(handler=_handle_stop)
+
+    status_parser = subparsers.add_parser("status", help="Show auto mode and repo status")
+    status_parser.set_defaults(handler=_handle_status)
+
+    summary_parser = subparsers.add_parser("summary", help="Show current session auto summary")
+    summary_parser.set_defaults(handler=_handle_summary)
+
+    stats_parser = subparsers.add_parser("stats", help="Show aggregate auto stats")
+    stats_parser.set_defaults(handler=_handle_stats)
+
+    doctor_parser = subparsers.add_parser("doctor", help="Show shell diagnostics")
+    doctor_parser.set_defaults(handler=_handle_doctor)
+
+    reset_parser = subparsers.add_parser("reset", help="Reset project runtime state")
+    reset_parser.set_defaults(handler=_handle_reset)
 
     return parser
 
@@ -250,6 +311,54 @@ def _handle_handoff(_: argparse.Namespace) -> int:
     append_session_event(command="handoff", observation=observation, result=None)
     _print(markdown)
     _print(f"Saved handoff to {handoff_path}")
+    return 0
+
+
+def _handle_auto(args: argparse.Namespace) -> int:
+    interval = max(2.0, min(float(args.interval), 5.0))
+    return run_auto_mode(
+        interval_seconds=interval,
+        verbose=bool(args.verbose),
+        background_worker=bool(args.background_worker),
+    )
+
+
+def _handle_start(args: argparse.Namespace) -> int:
+    interval = max(2.0, min(float(args.interval), 5.0))
+    return start_auto_mode_background(interval_seconds=interval, verbose=bool(args.verbose))
+
+
+def _handle_stop(_: argparse.Namespace) -> int:
+    stopped = stop_auto_mode()
+    if stopped:
+        _print("[Aegis] Stop signal sent. Auto mode will stop shortly.")
+    else:
+        _print("[Aegis] Auto mode is not running.")
+    return 0
+
+
+def _handle_status(_: argparse.Namespace) -> int:
+    _print(render_status())
+    return 0
+
+
+def _handle_summary(_: argparse.Namespace) -> int:
+    _print(render_summary())
+    return 0
+
+
+def _handle_stats(_: argparse.Namespace) -> int:
+    _print(render_stats())
+    return 0
+
+
+def _handle_doctor(_: argparse.Namespace) -> int:
+    _print(render_doctor())
+    return 0
+
+
+def _handle_reset(_: argparse.Namespace) -> int:
+    _print(reset_project_runtime())
     return 0
 
 
