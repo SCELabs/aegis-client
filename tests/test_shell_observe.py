@@ -36,6 +36,12 @@ class TestShellObserve(unittest.TestCase):
                 stdout="aegis/client.py | 3 ++-\n1 file changed, 2 insertions(+), 1 deletion(-)\n",
                 stderr="",
             ),
+            ("git", "diff", "--numstat"): subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout="2\t1\taegis/client.py\n",
+                stderr="",
+            ),
         }
 
         def fake_runner(args, **kwargs):
@@ -58,3 +64,39 @@ class TestShellObserve(unittest.TestCase):
         self.assertEqual(obs.branch, "unknown")
         self.assertEqual(obs.changed_file_count, 0)
         self.assertFalse(obs.dirty)
+
+    def test_collect_repo_observation_ignores_aegis_internal_files(self):
+        responses = {
+            ("git", "rev-parse", "--abbrev-ref", "HEAD"): subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout="feature/test\n",
+                stderr="",
+            ),
+            ("git", "status", "--short"): subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout=" M .aegis/session.jsonl\n M app.py\n?? .aegis/auto_state.json\n",
+                stderr="",
+            ),
+            ("git", "diff", "--stat"): subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout=".aegis/session.jsonl | 2 ++\napp.py | 1 +\n2 files changed, 3 insertions(+)\n",
+                stderr="",
+            ),
+            ("git", "diff", "--numstat"): subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout="2\t0\t.aegis/session.jsonl\n1\t0\tapp.py\n",
+                stderr="",
+            ),
+        }
+
+        def fake_runner(args, **kwargs):
+            return responses[tuple(args)]
+
+        obs = collect_repo_observation(cwd="/tmp/repo", runner=fake_runner)
+        self.assertEqual(obs.changed_file_count, 1)
+        self.assertEqual(obs.diff_summary["files_changed"], 1)
+        self.assertEqual(obs.diff_summary["insertions"], 1)

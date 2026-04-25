@@ -158,3 +158,87 @@ class TestShellCLI(unittest.TestCase):
                 os.chdir(cwd)
 
         mock_append.assert_called_once()
+
+    @patch("aegis.shell.cli.stop_auto_mode")
+    def test_stop_command(self, mock_stop):
+        mock_stop.return_value = True
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            rc = main(["stop"])
+        self.assertEqual(rc, 0)
+        self.assertIn("[Aegis] Stop signal sent.", buffer.getvalue())
+
+    @patch("aegis.shell.cli.render_status")
+    def test_status_command(self, mock_render_status):
+        mock_render_status.return_value = "[Aegis] Auto mode running: no"
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            rc = main(["status"])
+        self.assertEqual(rc, 0)
+        self.assertIn("[Aegis] Auto mode running: no", buffer.getvalue())
+
+    @patch("aegis.shell.cli.render_summary")
+    @patch("aegis.shell.cli.render_stats")
+    def test_summary_and_stats_commands(self, mock_render_stats, mock_render_summary):
+        mock_render_summary.return_value = "[Aegis] Aegis Summary (Session)"
+        mock_render_stats.return_value = "[Aegis] Aegis Stats (All Sessions)"
+
+        summary_buffer = io.StringIO()
+        with redirect_stdout(summary_buffer):
+            summary_rc = main(["summary"])
+
+        stats_buffer = io.StringIO()
+        with redirect_stdout(stats_buffer):
+            stats_rc = main(["stats"])
+
+        self.assertEqual(summary_rc, 0)
+        self.assertEqual(stats_rc, 0)
+        self.assertNotIn("{", summary_buffer.getvalue())
+        self.assertNotIn("{", stats_buffer.getvalue())
+
+    @patch("aegis.shell.cli.run_auto_mode")
+    def test_auto_command_passes_verbose_flag(self, mock_run_auto_mode):
+        mock_run_auto_mode.return_value = 0
+
+        rc_default = main(["auto"])
+        rc_verbose = main(["auto", "--verbose"])
+
+        self.assertEqual(rc_default, 0)
+        self.assertEqual(rc_verbose, 0)
+        self.assertEqual(mock_run_auto_mode.call_args_list[0].kwargs["verbose"], False)
+        self.assertEqual(mock_run_auto_mode.call_args_list[0].kwargs["background_worker"], False)
+        self.assertEqual(mock_run_auto_mode.call_args_list[1].kwargs["verbose"], True)
+        self.assertEqual(mock_run_auto_mode.call_args_list[1].kwargs["background_worker"], False)
+
+    @patch("aegis.shell.cli.run_auto_mode")
+    def test_auto_background_worker_flag(self, mock_run_auto_mode):
+        mock_run_auto_mode.return_value = 0
+        rc = main(["auto", "--background-worker"])
+        self.assertEqual(rc, 0)
+        self.assertEqual(mock_run_auto_mode.call_args.kwargs["background_worker"], True)
+
+    @patch("aegis.shell.cli.start_auto_mode_background")
+    def test_start_command(self, mock_start):
+        mock_start.return_value = 0
+        rc = main(["start", "--interval", "4", "--verbose"])
+        self.assertEqual(rc, 0)
+        self.assertEqual(mock_start.call_args.kwargs["interval_seconds"], 4.0)
+        self.assertEqual(mock_start.call_args.kwargs["verbose"], True)
+
+    @patch("aegis.shell.cli.render_doctor")
+    def test_doctor_command(self, mock_render_doctor):
+        mock_render_doctor.return_value = "[Aegis] Doctor"
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            rc = main(["doctor"])
+        self.assertEqual(rc, 0)
+        self.assertIn("[Aegis] Doctor", buffer.getvalue())
+
+    @patch("aegis.shell.cli.reset_project_runtime")
+    def test_reset_command(self, mock_reset):
+        mock_reset.return_value = "[Aegis] Reset project runtime state"
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            rc = main(["reset"])
+        self.assertEqual(rc, 0)
+        self.assertIn("Reset project runtime state", buffer.getvalue())

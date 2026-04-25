@@ -78,7 +78,53 @@ def _git_output(
     )
     if proc.returncode != 0:
         return ""
-    return (proc.stdout or "").strip()
+    return (proc.stdout or "").rstrip()
+
+
+def _normalize_path(value: str) -> str:
+    return value.strip().strip('"').replace("\\", "/")
+
+
+def _is_ignored_path(path: str) -> bool:
+    normalized = _normalize_path(path)
+    return normalized == ".aegis" or normalized.startswith(".aegis/")
+
+
+def _extract_status_path(status_line: str) -> str:
+    if len(status_line) <= 3:
+        return ""
+    path_part = status_line[3:].strip()
+    if " -> " in path_part:
+        path_part = path_part.split(" -> ", 1)[1].strip()
+    return path_part
+
+
+def _parse_numstat_summary(numstat_text: str) -> dict[str, int]:
+    files_changed = 0
+    insertions = 0
+    deletions = 0
+
+    for line in numstat_text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        parts = stripped.split("\t")
+        if len(parts) < 3:
+            continue
+        ins_raw, del_raw, path = parts[0], parts[1], parts[2]
+        if _is_ignored_path(path):
+            continue
+        files_changed += 1
+        if ins_raw.isdigit():
+            insertions += int(ins_raw)
+        if del_raw.isdigit():
+            deletions += int(del_raw)
+
+    return {
+        "files_changed": files_changed,
+        "insertions": insertions,
+        "deletions": deletions,
+    }
 
 
 def collect_repo_observation(
@@ -88,16 +134,27 @@ def collect_repo_observation(
     branch = _git_output(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=repo_cwd, runner=runner) or "unknown"
     status_short = _git_output(["git", "status", "--short"], cwd=repo_cwd, runner=runner)
     diff_stat = _git_output(["git", "diff", "--stat"], cwd=repo_cwd, runner=runner)
+    diff_numstat = _git_output(["git", "diff", "--numstat"], cwd=repo_cwd, runner=runner)
 
-    status_lines = [line for line in status_short.splitlines() if line.strip()]
+    status_lines = []
+    for line in status_short.splitlines():
+        if not line.strip():
+            continue
+        path = _extract_status_path(line)
+        if _is_ignored_path(path):
+            continue
+        status_lines.append(line)
+    filtered_status_short = "\n".join(status_lines)
     changed_file_count = len(status_lines)
     dirty = changed_file_count > 0
-    diff_summary = parse_diff_stat(diff_stat)
+    diff_summary = _parse_numstat_summary(diff_numstat)
+    if diff_summary["files_changed"] == 0 and diff_numstat.strip() == "":
+        diff_summary = parse_diff_stat(diff_stat)
 
     return RepoObservation(
         cwd=repo_cwd,
         branch=branch,
-        status_short=status_short,
+        status_short=filtered_status_short,
         diff_stat=diff_stat,
         changed_file_count=changed_file_count,
         dirty=dirty,
