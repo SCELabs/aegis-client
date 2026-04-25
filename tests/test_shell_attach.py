@@ -43,12 +43,26 @@ class TestAttachCliAndParser(unittest.TestCase):
         args = parser.parse_args(["attach", "--cmd", "echo hello"])
         self.assertEqual(args.command, "attach")
         self.assertEqual(args.cmd, "echo hello")
+        self.assertIsNone(args.report)
+        with_report = parser.parse_args(["attach", "--cmd", "echo hello", "--report", ".aegis/report.md"])
+        self.assertEqual(with_report.report, ".aegis/report.md")
 
     def test_main_attach_invokes_handler(self):
         with patch("aegis.shell.cli.run_attach", return_value=(0, "[Aegis] Pipeline Simulation Report")) as mock_run:
             rc = main(["attach", "--cmd", "echo hello", "--no-live"])
         self.assertEqual(rc, 0)
         self.assertTrue(mock_run.called)
+
+    def test_main_attach_writes_report_file_and_parents(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            report_path = Path(tmpdir) / "reports" / "latest.md"
+            with patch("aegis.shell.cli.run_attach", return_value=(0, "[Aegis] Pipeline Simulation Report")):
+                buffer = io.StringIO()
+                with patch("sys.stdout", new=buffer):
+                    rc = main(["attach", "--cmd", "echo hello", "--no-live", "--report", str(report_path)])
+            self.assertEqual(rc, 0)
+            self.assertTrue(report_path.exists())
+            self.assertIn("[Aegis] Report saved to:", buffer.getvalue())
 
 
 class TestAttachRuntime(unittest.TestCase):
@@ -132,6 +146,21 @@ class TestAttachRuntime(unittest.TestCase):
 
         self.assertIn("Pipeline Simulation Report", report)
 
+    def test_scope_observed_when_no_growth(self):
+        fake_client = Mock()
+        fake_client.auto.return_value.step.side_effect = RuntimeError("offline")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cwd = Path(tmpdir)
+            with (
+                patch("aegis.shell.attach.subprocess.Popen", return_value=_FakePopen(stdout_lines=["retry"], stderr_lines=[])),
+                patch("aegis.shell.attach.collect_repo_observation", return_value=_observation(changed_files=10, files_changed=10)),
+                patch("aegis.shell.attach._build_client", return_value=fake_client),
+            ):
+                _, report = run_attach(command="same-scope", live_output=False, cwd=cwd)
+
+        self.assertIn("Scope observed: 10 files", report)
+        self.assertNotIn("Scope drift: 10 -> 10 files", report)
+
     def test_attach_writes_session_events(self):
         fake_client = Mock()
         fake_client.auto.return_value.step.side_effect = RuntimeError("offline")
@@ -195,7 +224,7 @@ class TestAttachRuntime(unittest.TestCase):
 
         self.assertIn("Observed:", report)
         self.assertIn("Projected impact:", report)
-        self.assertIn("Recommended integration points:", report)
+        self.assertIn("Recommended SDK integration points:", report)
 
     def test_attach_json_output_is_valid(self):
         fake_client = Mock()
@@ -231,6 +260,84 @@ class TestAttachRuntime(unittest.TestCase):
         self.assertIn("Repeated retry patterns: 1", report)
         self.assertIn("Validation failures observed: 1", report)
 
+    def test_attach_runs_history_record_is_written(self):
+        fake_client = Mock()
+        fake_client.auto.return_value.step.side_effect = RuntimeError("offline")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cwd = Path(tmpdir)
+            with (
+                patch("aegis.shell.attach.subprocess.Popen", return_value=_FakePopen(stdout_lines=["retry", "validation failed"], stderr_lines=[])),
+                patch("aegis.shell.attach.collect_repo_observation", return_value=_observation(changed_files=2, files_changed=2)),
+                patch("aegis.shell.attach._build_client", return_value=fake_client),
+            ):
+                run_attach(command="history-cmd", live_output=False, cwd=cwd)
+                runs_path = cwd / ".aegis" / "attach_runs.jsonl"
+                self.assertTrue(runs_path.exists())
+                lines = [line for line in runs_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+                self.assertGreaterEqual(len(lines), 1)
+                payload = json.loads(lines[-1])
+
+        for key in [
+            "timestamp",
+            "session_id",
+            "command",
+            "duration_seconds",
+            "exit_code",
+            "retry_pattern_count",
+            "validation_failure_count",
+            "context_bloat_signal_count",
+            "rate_limit_signal_count",
+            "retrieval_signal_count",
+            "initial_changed_files",
+            "final_changed_files",
+            "control_signal_count",
+            "estimated_iterations_avoided_low",
+            "estimated_iterations_avoided_high",
+        ]:
+            self.assertIn(key, payload)
+
+    def test_comparison_section_appears_on_second_run_same_command(self):
+        fake_client = Mock()
+        fake_client.auto.return_value.step.side_effect = RuntimeError("offline")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cwd = Path(tmpdir)
+            with (
+                patch("aegis.shell.attach.subprocess.Popen", return_value=_FakePopen(stdout_lines=["retry", "retry"], stderr_lines=[])),
+                patch("aegis.shell.attach.collect_repo_observation", return_value=_observation(changed_files=3, files_changed=3)),
+                patch("aegis.shell.attach._build_client", return_value=fake_client),
+            ):
+                run_attach(command="same-command", live_output=False, cwd=cwd)
+                _, second_report = run_attach(command="same-command", live_output=False, cwd=cwd)
+
+        self.assertIn("Compared to previous run:", second_report)
+        self.assertIn("Retry patterns: previous", second_report)
+        self.assertIn("Validation failures: previous", second_report)
+        self.assertIn("Estimated iterations avoided: previous", second_report)
+
+    def test_integration_recommendations_include_rag_context_only_when_signaled(self):
+        fake_client = Mock()
+        fake_client.auto.return_value.step.side_effect = RuntimeError("offline")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cwd = Path(tmpdir)
+            with (
+                patch(
+                    "aegis.shell.attach.subprocess.Popen",
+                    return_value=_FakePopen(stdout_lines=["retrieval failed", "no relevant context"], stderr_lines=[]),
+                ),
+                patch("aegis.shell.attach.collect_repo_observation", return_value=_observation()),
+                patch("aegis.shell.attach._build_client", return_value=fake_client),
+            ):
+                _, report_with_retrieval = run_attach(command="retrieval-cmd", live_output=False, cwd=cwd)
+            with (
+                patch("aegis.shell.attach.subprocess.Popen", return_value=_FakePopen(stdout_lines=["steady output"], stderr_lines=[])),
+                patch("aegis.shell.attach.collect_repo_observation", return_value=_observation()),
+                patch("aegis.shell.attach._build_client", return_value=fake_client),
+            ):
+                _, report_without_retrieval = run_attach(command="no-retrieval-cmd", live_output=False, cwd=cwd)
+
+        self.assertIn("After retrieval/context construction:", report_with_retrieval)
+        self.assertNotIn("After retrieval/context construction:", report_without_retrieval)
+
     def test_attach_does_not_require_backend_when_fallback_used(self):
         fake_client = Mock()
         fake_client.auto.return_value.step.side_effect = RuntimeError("offline")
@@ -245,3 +352,16 @@ class TestAttachRuntime(unittest.TestCase):
 
         self.assertEqual(rc, 0)
         self.assertIn("Pipeline Simulation Report", report)
+
+
+class TestAttachExamples(unittest.TestCase):
+    def test_demo_fixture_commands_exist(self):
+        root = Path(__file__).resolve().parent.parent
+        files = [
+            root / "examples" / "shell_attach" / "retry_loop_pipeline.py",
+            root / "examples" / "shell_attach" / "noisy_rag_pipeline.py",
+            root / "examples" / "shell_attach" / "context_bloat_pipeline.py",
+            root / "examples" / "shell_attach" / "README.md",
+        ]
+        for file_path in files:
+            self.assertTrue(file_path.exists(), str(file_path))

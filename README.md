@@ -56,87 +56,90 @@ pip install scelabs-aegis
 
 ---
 
-## Aegis Shell
+## Aegis Shell: Zero-Integration Pipeline Sidecar
 
-Aegis Shell is the zero-integration sidecar for testing Aegis against your existing AI pipeline.
-
-It runs alongside your current tooling with no SDK integration required. You can keep using Claude Code, Codex, Cursor, Copilot, or any other AI tool. Aegis observes repo and workflow signals, applies runtime control guidance, detects retry loops and scope drift, and reports observable impact metrics.
-
-Aegis Shell is a sidecar control layer:
-
-* your AI tool still does the work
-* Aegis does not write your code for you
-* Aegis does not run destructive repo operations
-* Aegis observes and emits control decisions
-
-Attach mode lets you simulate proof-of-value without editing your pipeline code:
+Aegis Shell lets you run an existing AI pipeline through Aegis without editing pipeline code.
 
 ```bash
 aegis attach --cmd "python run_agent.py"
 ```
 
-Attach mode reports:
+Core message:
 
-* observed instability in your current run
+* attach Aegis to your pipeline and see what it would control before you integrate
+* no code changes required
+* no SDK wiring required for proof-of-value
+
+Aegis Shell simulation reports show:
+
+* observed behavior
 * controls Aegis would have issued
 * projected impact
 * recommended SDK integration points
 
-### Quick Start
+Example demo command:
 
 ```bash
-pip install scelabs-aegis
-aegis init
-
-cd your-project
-aegis start
+aegis attach --cmd "python examples/shell_attach/retry_loop_pipeline.py" --no-live --report .aegis/reports/retry-demo.md
 ```
 
-Then use your AI tools normally.
-
-### Key Commands
-
-```bash
-aegis start
-aegis status
-aegis attach --cmd "python run_agent.py"
-aegis summary
-aegis stats
-aegis control
-aegis control --json
-aegis control apply-prompt
-aegis control clear
-aegis stop
-aegis doctor
-aegis reset
-```
-
-Example summary output:
+Example attach report (current renderer style):
 
 ```text
-[Aegis] Aegis Summary (Session)
-[Aegis] Issues caught:
-[Aegis] - Loop detected (1 time)
-[Aegis] - Scope drift detected (1 time)
-[Aegis] Interventions:
-[Aegis] - Control signals issued: 2
-[Aegis] - Escalations: 1
-[Aegis] - Active controls issued: present
-[Aegis] Impact:
-[Aegis] - Estimated AI iterations avoided: 11
-[Aegis] - Prevented 2-4 unnecessary retries
-[Aegis] - Reduced scope from 6 files to 3
+[Aegis] Pipeline Simulation Report
+
+[Aegis] Observed:
+[Aegis] - Runtime: 2 sec
+[Aegis] - Exit status: 0
+[Aegis] - Repeated retry patterns: 3
+[Aegis] - Scope observed: 1 files
+[Aegis] - Validation failures observed: 1
+
+[Aegis] Aegis would have:
+[Aegis] - Stop retries
+[Aegis] - Limit changes to 2-3 files
+[Aegis] - Validate changes before next step
+
+[Aegis] Projected impact:
+[Aegis] - Estimated AI iterations avoided: 4-8
+[Aegis] - Retry loops prevented: 1
+[Aegis] - Scope reduced from 1 files to 1
+
+[Aegis] Recommended SDK integration points:
+[Aegis] - Before retry loop: call client.auto().step(...) before another retry.
+[Aegis] - Before agent step continuation: call client.auto().agent(...) or client.auto().step(...).
+```
+
+Attach options:
+
+```bash
+aegis attach --cmd "python run_agent.py"
+aegis attach --cmd "python run_agent.py" --simulate
+aegis attach --cmd "python run_agent.py" --no-simulate
+aegis attach --cmd "python run_agent.py" --log pipeline.log
+aegis attach --cmd "python run_agent.py" --json
+aegis attach --cmd "python run_agent.py" --report .aegis/report.md
+aegis attach --cmd "python run_agent.py" --json --report .aegis/report.json
+aegis attach --cmd "python run_agent.py" --no-live
 ```
 
 Runtime files under `.aegis/`:
 
-* `session.jsonl` keeps event history
-* `control.json` is the active machine-readable control state for adapters/wrappers
+* `control.json` active machine-readable control state
+* `session.jsonl` event history
+* `attach_runs.jsonl` compact run history for same-command comparison
 
-Upgrade path:
+## Shell vs SDK
 
-* Shell: attach Aegis to your pipeline and see what it would control before you integrate.
-* SDK: integrate Aegis to enforce those controls in production.
+Aegis Shell:
+
+* observes
+* simulates
+* reports
+
+Aegis SDK:
+
+* enforces controls in production pipelines
 
 See full guide: [./docs/aegis-shell.md](./docs/aegis-shell.md)
 

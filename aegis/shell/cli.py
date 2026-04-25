@@ -104,6 +104,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     attach_parser.add_argument("--log", default=None, help="Optional log file path to read during/after run")
     attach_parser.add_argument("--json", action="store_true", help="Output machine-readable JSON report")
+    attach_parser.add_argument("--report", default=None, help="Write rendered attach report to this path")
     attach_parser.add_argument("--no-live", action="store_true", help="Suppress live command output")
     attach_parser.add_argument(
         "--interval",
@@ -398,6 +399,11 @@ def _handle_attach(args: argparse.Namespace) -> int:
         interval_seconds=interval,
     )
     _print(output)
+    if args.report:
+        report_path = Path(args.report)
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(str(output), encoding="utf-8")
+        _print(f"[Aegis] Report saved to: {report_path}")
     return rc
 
 

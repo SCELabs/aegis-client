@@ -20,7 +20,7 @@ from .auto import (
     read_auto_state,
 )
 from .observe import RepoObservation, collect_repo_observation
-from .session import append_auto_event, read_all_session_events, session_log_path
+from .session import append_auto_event, session_log_path
 
 RETRY_TERMS = ("retry", "retrying", "replan")
 VALIDATION_TERMS = ("validation failed", "parse error", "json parse", "schema error", "tool call failed")
@@ -106,27 +106,41 @@ class AttachReport:
     observation: AttachRunObservation
     controls: list[str]
     projected_impact: dict[str, Any]
-    recommended_integration_points: list[str]
+    recommended_sdk_integration_points: list[str]
     control_state_path: str
     session_log_path: str
+    comparison_to_previous_run: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "observed": self.observation.to_dict(),
             "controls": self.controls,
             "projected_impact": self.projected_impact,
-            "recommended_integration_points": self.recommended_integration_points,
+            "recommended_sdk_integration_points": self.recommended_sdk_integration_points,
+            "recommended_integration_points": self.recommended_sdk_integration_points,
             "control_state_path": self.control_state_path,
             "session_log_path": self.session_log_path,
         }
+        if self.comparison_to_previous_run is not None:
+            payload["comparison_to_previous_run"] = self.comparison_to_previous_run
+        return payload
 
 
 def _stream_reader(stream: Any, stream_name: str, sink: queue.Queue[tuple[str, str]]) -> None:
     try:
-        for raw in iter(stream.readline, ""):
+        while True:
+            try:
+                raw = stream.readline()
+            except ValueError:
+                break
+            if raw == "":
+                break
             sink.put((stream_name, raw.rstrip("\n")))
     finally:
-        stream.close()
+        try:
+            stream.close()
+        except OSError:
+            pass
 
 
 def _lower_contains_any(text: str, terms: tuple[str, ...]) -> bool:
@@ -182,6 +196,42 @@ def _read_log_lines(log_path: str | Path | None) -> list[str]:
         return path.read_text(encoding="utf-8").splitlines()
     except OSError:
         return []
+
+
+def _attach_runs_path(*, cwd: str | Path | None = None) -> Path:
+    root = Path(cwd) if cwd is not None else Path.cwd()
+    return root / ".aegis" / "attach_runs.jsonl"
+
+
+def _read_attach_run_records(*, cwd: str | Path | None = None) -> list[dict[str, Any]]:
+    path = _attach_runs_path(cwd=cwd)
+    if not path.exists():
+        return []
+    records: list[dict[str, Any]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            payload = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(payload, dict):
+            records.append(payload)
+    return records
+
+
+def _append_attach_run_record(record: dict[str, Any], *, cwd: str | Path | None = None) -> None:
+    path = _attach_runs_path(cwd=cwd)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, sort_keys=True) + "\n")
+
+
+def _previous_run_for_command(records: list[dict[str, Any]], *, command: str) -> dict[str, Any] | None:
+    for record in reversed(records):
+        if str(record.get("command", "")) == command:
+            return record
+    return None
 
 
 def _build_attach_signals(observation: AttachRunObservation) -> list[AttachSignal]:
@@ -246,14 +296,20 @@ def _build_attach_signals(observation: AttachRunObservation) -> list[AttachSigna
 
 def _recommended_integration_points(observation: AttachRunObservation) -> list[str]:
     points: list[str] = []
-    if observation.retry_pattern_count > 0 or observation.repeated_line_count > 0:
-        points.append("Before retry loop")
+    retry_or_validation = (
+        observation.retry_pattern_count > 0
+        or observation.repeated_line_count > 0
+        or observation.validation_failure_count > 0
+    )
+    if retry_or_validation:
+        points.append("Before retry loop: call client.auto().step(...) before another retry.")
+        points.append("Before agent step continuation: call client.auto().agent(...) or client.auto().step(...).")
     if observation.retrieval_signal_count > 0 or observation.context_bloat_signal_count > 0:
-        points.append("After retrieval/context construction")
-    if observation.validation_failure_count > 0 or observation.exit_code != 0:
-        points.append("Before agent step continuation")
+        points.append(
+            "After retrieval/context construction: call client.auto().rag(...) or client.auto().context(...)."
+        )
     if not points:
-        points.append("Before agent step continuation")
+        points.append("Before agent step continuation: call client.auto().agent(...) or client.auto().step(...).")
     deduped: list[str] = []
     for point in points:
         if point not in deduped:
@@ -271,11 +327,20 @@ def _render_report(report: AttachReport) -> str:
         f"[Aegis] - Runtime: {int(obs.duration_seconds)} sec",
         f"[Aegis] - Exit status: {obs.exit_code}",
         f"[Aegis] - Repeated retry patterns: {obs.retry_pattern_count}",
-        f"[Aegis] - Scope drift: {obs.initial_repo_snapshot.get('changed_file_count', 0)} -> {obs.final_repo_snapshot.get('changed_file_count', 0)} files",
+    ]
+    initial_files = int(obs.initial_repo_snapshot.get("changed_file_count", 0))
+    final_files = int(obs.final_repo_snapshot.get("changed_file_count", 0))
+    if final_files > initial_files:
+        lines.append(f"[Aegis] - Scope drift: {initial_files} -> {final_files} files")
+    else:
+        lines.append(f"[Aegis] - Scope observed: {final_files} files")
+    lines.extend(
+        [
         f"[Aegis] - Validation failures observed: {obs.validation_failure_count}",
         "",
         "[Aegis] Aegis would have:",
-    ]
+        ]
+    )
     for control in controls:
         lines.append(f"[Aegis] - {control}")
 
@@ -288,11 +353,34 @@ def _render_report(report: AttachReport) -> str:
             f"[Aegis] - Retry loops prevented: {projected.get('retry_loops_prevented', 0)}",
             f"[Aegis] - Scope reduced from {projected.get('scope_from', 0)} files to {projected.get('scope_to', 0)}",
             "",
-            "[Aegis] Recommended integration points:",
+            "[Aegis] Recommended SDK integration points:",
         ]
     )
-    for point in report.recommended_integration_points:
+    for point in report.recommended_sdk_integration_points:
         lines.append(f"[Aegis] - {point}")
+    if report.comparison_to_previous_run is not None:
+        previous = report.comparison_to_previous_run
+        lines.extend(
+            [
+                "",
+                "[Aegis] Compared to previous run:",
+                (
+                    f"[Aegis] - Retry patterns: previous {previous.get('previous_retry_pattern_count', 0)}, "
+                    f"current {previous.get('current_retry_pattern_count', 0)}"
+                ),
+                (
+                    f"[Aegis] - Validation failures: previous {previous.get('previous_validation_failure_count', 0)}, "
+                    f"current {previous.get('current_validation_failure_count', 0)}"
+                ),
+                (
+                    f"[Aegis] - Estimated iterations avoided: previous "
+                    f"{previous.get('previous_estimated_iterations_avoided_low', 0)}-"
+                    f"{previous.get('previous_estimated_iterations_avoided_high', 0)}, current "
+                    f"{previous.get('current_estimated_iterations_avoided_low', 0)}-"
+                    f"{previous.get('current_estimated_iterations_avoided_high', 0)}"
+                ),
+            ]
+        )
     lines.extend(
         [
             "",
@@ -434,6 +522,7 @@ def run_attach(
     projected_low = 0
     projected_high = 0
     retry_loops_prevented = 0
+    attach_signals: list[AttachSignal] = []
     issue_counts: dict[str, int] = {}
     if simulate:
         client = _build_client()
@@ -461,6 +550,20 @@ def run_attach(
     projected_text = "0"
     if projected_high > 0:
         projected_text = f"{projected_low}-{projected_high}"
+    previous_runs = _read_attach_run_records(cwd=project_path)
+    previous = _previous_run_for_command(previous_runs, command=command)
+    comparison: dict[str, Any] | None = None
+    if previous is not None:
+        comparison = {
+            "previous_retry_pattern_count": int(previous.get("retry_pattern_count", 0)),
+            "current_retry_pattern_count": run_observation.retry_pattern_count,
+            "previous_validation_failure_count": int(previous.get("validation_failure_count", 0)),
+            "current_validation_failure_count": run_observation.validation_failure_count,
+            "previous_estimated_iterations_avoided_low": int(previous.get("estimated_iterations_avoided_low", 0)),
+            "previous_estimated_iterations_avoided_high": int(previous.get("estimated_iterations_avoided_high", 0)),
+            "current_estimated_iterations_avoided_low": projected_low,
+            "current_estimated_iterations_avoided_high": projected_high,
+        }
     report = AttachReport(
         observation=run_observation,
         controls=controls[:6],
@@ -470,9 +573,10 @@ def run_attach(
             "scope_from": final_observation.changed_file_count,
             "scope_to": 3 if final_observation.changed_file_count > 3 else final_observation.changed_file_count,
         },
-        recommended_integration_points=_recommended_integration_points(run_observation),
+        recommended_sdk_integration_points=_recommended_integration_points(run_observation),
         control_state_path=str(project_path / ".aegis" / "control.json"),
         session_log_path=str(session_log_path(cwd=project_path)),
+        comparison_to_previous_run=comparison,
     )
 
     append_auto_event(
@@ -482,6 +586,26 @@ def run_attach(
             "report": report.to_dict(),
         },
         session_id=session_id,
+        cwd=project_path,
+    )
+    _append_attach_run_record(
+        {
+            "timestamp": ended_iso,
+            "session_id": session_id,
+            "command": command,
+            "duration_seconds": run_observation.duration_seconds,
+            "exit_code": run_observation.exit_code,
+            "retry_pattern_count": run_observation.retry_pattern_count,
+            "validation_failure_count": run_observation.validation_failure_count,
+            "context_bloat_signal_count": run_observation.context_bloat_signal_count,
+            "rate_limit_signal_count": run_observation.rate_limit_signal_count,
+            "retrieval_signal_count": run_observation.retrieval_signal_count,
+            "initial_changed_files": int(run_observation.initial_repo_snapshot.get("changed_file_count", 0)),
+            "final_changed_files": int(run_observation.final_repo_snapshot.get("changed_file_count", 0)),
+            "control_signal_count": len(attach_signals),
+            "estimated_iterations_avoided_low": projected_low,
+            "estimated_iterations_avoided_high": projected_high,
+        },
         cwd=project_path,
     )
 
