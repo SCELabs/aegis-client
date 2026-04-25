@@ -56,6 +56,55 @@ pip install scelabs-aegis
 
 ---
 
+## Aegis Shell
+
+Aegis Shell is the easiest way to use Aegis as a control layer in your existing workflow.
+
+It runs alongside your current tooling with no SDK integration required. You can keep using Claude Code, Codex, Cursor, Copilot, or any other AI tool. Aegis observes repo and workflow signals, applies runtime control guidance, detects retry loops and scope drift, and reports estimated calls and cost saved.
+
+### Quick Start
+
+```bash
+pip install scelabs-aegis
+aegis init
+
+cd your-project
+aegis start
+```
+
+Then use your AI tools normally.
+
+### Key Commands
+
+```bash
+aegis start
+aegis status
+aegis summary
+aegis stats
+aegis stop
+aegis doctor
+aegis reset
+```
+
+Example summary output:
+
+```text
+[Aegis] Aegis Summary (Session)
+[Aegis] Issues caught:
+[Aegis] - Loop detected (1 time)
+[Aegis] - Scope drift detected (1 time)
+[Aegis] Interventions:
+[Aegis] - Control signals issued: 2
+[Aegis] - Escalations: 1
+[Aegis] Impact:
+[Aegis] - Estimated calls saved: 11
+[Aegis] - Estimated cost saved: $2.20
+```
+
+See full guide: [./docs/aegis-shell.md](./docs/aegis-shell.md)
+
+---
+
 ## Get an API Key
 
 ```bash
