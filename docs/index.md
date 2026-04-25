@@ -80,6 +80,7 @@ Current public auto routes:
 ## Docs
 
 * [Architecture](./architecture.md)
+* [Aegis Shell](./aegis-shell.md)
 * [Scopes](./scopes.md)
 * [Request Shapes](./request-shapes.md)
 * [Result Model](./result-model.md)
