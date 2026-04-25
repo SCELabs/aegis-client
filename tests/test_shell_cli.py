@@ -6,7 +6,7 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from aegis.shell.cli import main
+from aegis.shell.cli import _build_parser, main
 from aegis.shell.observe import RepoObservation
 
 
@@ -37,6 +37,37 @@ def _observation() -> RepoObservation:
 
 
 class TestShellCLI(unittest.TestCase):
+    def test_parser_accepts_control_variants(self):
+        parser = _build_parser()
+
+        args_default = parser.parse_args(["control"])
+        self.assertEqual(args_default.command, "control")
+        self.assertIsNone(args_default.control_action)
+        self.assertFalse(args_default.json)
+
+        args_json = parser.parse_args(["control", "--json"])
+        self.assertEqual(args_json.command, "control")
+        self.assertIsNone(args_json.control_action)
+        self.assertTrue(args_json.json)
+
+        args_clear = parser.parse_args(["control", "clear"])
+        self.assertEqual(args_clear.command, "control")
+        self.assertEqual(args_clear.control_action, "clear")
+
+        args_prompt = parser.parse_args(["control", "apply-prompt"])
+        self.assertEqual(args_prompt.command, "control")
+        self.assertEqual(args_prompt.control_action, "apply-prompt")
+
+    @patch("aegis.shell.cli.render_control_state")
+    def test_control_command_default_renders_state(self, mock_render_control_state):
+        mock_render_control_state.return_value = "[Aegis] Active Controls"
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            rc = main(["control"])
+        self.assertEqual(rc, 0)
+        self.assertIn("[Aegis] Active Controls", buffer.getvalue())
+        mock_render_control_state.assert_called_once_with(as_json=False)
+
     @patch("aegis.shell.cli.write_user_config")
     @patch("aegis.shell.cli.requests.post")
     @patch("aegis.shell.cli.prompt_email")

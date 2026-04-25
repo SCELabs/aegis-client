@@ -19,7 +19,9 @@ from .auto import (
     start_auto_mode_background,
     stop_auto_mode,
 )
+from .attach import run_attach
 from .config import DEFAULT_BASE_URL, ENV_BASE_URL, resolve_runtime_config, write_user_config
+from .control import clear_control_state, render_control_prompt, render_control_state
 from .observe import RepoObservation, collect_repo_observation
 from .prompts import prompt_email
 from .render import render_diagnose, render_plan, render_review
@@ -91,6 +93,39 @@ def _build_parser() -> argparse.ArgumentParser:
 
     stats_parser = subparsers.add_parser("stats", help="Show aggregate auto stats")
     stats_parser.set_defaults(handler=_handle_stats)
+
+    attach_parser = subparsers.add_parser("attach", help="Attach Aegis to an existing pipeline command")
+    attach_parser.add_argument("--cmd", required=True, help="Command to run under Aegis observation")
+    attach_parser.add_argument(
+        "--simulate",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Run in simulation mode (default: true)",
+    )
+    attach_parser.add_argument("--log", default=None, help="Optional log file path to read during/after run")
+    attach_parser.add_argument("--json", action="store_true", help="Output machine-readable JSON report")
+    attach_parser.add_argument("--no-live", action="store_true", help="Suppress live command output")
+    attach_parser.add_argument(
+        "--interval",
+        type=float,
+        default=3.0,
+        help="Observation polling interval in seconds (bounded to 2-5s)",
+    )
+    attach_parser.set_defaults(handler=_handle_attach)
+
+    control_parser = subparsers.add_parser("control", help="Inspect or manage active control state")
+    control_parser.add_argument(
+        "control_action",
+        nargs="?",
+        choices=["clear", "apply-prompt"],
+        help="Clear control state or render a pasteable prompt block",
+    )
+    control_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Show control state as raw JSON",
+    )
+    control_parser.set_defaults(handler=_handle_control)
 
     doctor_parser = subparsers.add_parser("doctor", help="Show shell diagnostics")
     doctor_parser.set_defaults(handler=_handle_doctor)
@@ -349,6 +384,37 @@ def _handle_summary(_: argparse.Namespace) -> int:
 
 def _handle_stats(_: argparse.Namespace) -> int:
     _print(render_stats())
+    return 0
+
+
+def _handle_attach(args: argparse.Namespace) -> int:
+    interval = max(2.0, min(float(args.interval), 5.0))
+    rc, output = run_attach(
+        command=str(args.cmd),
+        simulate=bool(args.simulate),
+        log_path=args.log,
+        as_json=bool(args.json),
+        live_output=not bool(args.no_live),
+        interval_seconds=interval,
+    )
+    _print(output)
+    return rc
+
+
+def _handle_control(args: argparse.Namespace) -> int:
+    action = getattr(args, "control_action", None)
+    if action == "clear":
+        cleared = clear_control_state()
+        if cleared:
+            _print("[Aegis] Cleared active control state.")
+        else:
+            _print("[Aegis] No active control state found.")
+        return 0
+    if action == "apply-prompt":
+        _print(render_control_prompt())
+        return 0
+
+    _print(render_control_state(as_json=bool(getattr(args, "json", False))))
     return 0
 
 

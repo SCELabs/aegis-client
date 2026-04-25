@@ -23,6 +23,7 @@ from .config import (
     load_user_config,
     resolve_runtime_config,
 )
+from .control import build_control_state, is_control_expired, read_control_state, write_control_state
 from .observe import RepoObservation, collect_repo_observation
 from .session import append_auto_event, read_all_session_events, session_log_path
 
@@ -872,6 +873,18 @@ def _process_signal_candidate(
         session_id=session_id,
         cwd=cwd,
     )
+    control_state = build_control_state(
+        session_id=session_id,
+        source=str(decision.get("source", "local_fallback")),
+        source_event=signal.signal_type,
+        fallback=fallback,
+        confidence=confidence,
+        escalation=escalation,
+        control=control,
+        human_controls=_control_guidance(control),
+        reason=str(decision.get("explanation") or _contextual_explanation(signal.signal_type)),
+    )
+    write_control_state(control_state, cwd=cwd)
 
     full_output = _render_decision_output(
         signal=signal,
@@ -1312,6 +1325,15 @@ def _find_scope_reduction_line(
     return "[Aegis] - Scope reduction: no scope-limiting intervention recorded"
 
 
+def _active_controls_summary_line(*, cwd: str | Path | None = None) -> str:
+    state = read_control_state(cwd=cwd)
+    if state is None:
+        return "[Aegis] - Active controls issued: none"
+    if is_control_expired(state):
+        return "[Aegis] - Active controls issued: present (expired)"
+    return "[Aegis] - Active controls issued: present"
+
+
 def render_status(*, cwd: str | Path | None = None) -> str:
     state = read_auto_state(cwd=cwd)
     project_path = state.get("project_path") or str(Path(cwd) if cwd is not None else Path.cwd())
@@ -1396,6 +1418,7 @@ def render_summary(*, cwd: str | Path | None = None) -> str:
         "[Aegis] Interventions:",
         f"[Aegis] - Control signals issued: {metrics.aegis_decision_count}",
         f"[Aegis] - Escalations: {metrics.escalation_count}",
+        _active_controls_summary_line(cwd=project_path),
         "",
         "[Aegis] Impact:",
         f"[Aegis] - Estimated AI iterations avoided: {metrics.estimated_calls_saved}",
@@ -1428,6 +1451,7 @@ def render_stats(*, cwd: str | Path | None = None) -> str:
         "[Aegis] Interventions:",
         f"[Aegis] - Control signals issued: {metrics.aegis_decision_count}",
         f"[Aegis] - Escalations: {metrics.escalation_count}",
+        _active_controls_summary_line(cwd=cwd),
         "",
         "[Aegis] Impact:",
         f"[Aegis] - Estimated AI iterations avoided: {metrics.estimated_calls_saved}",

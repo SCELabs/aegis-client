@@ -58,9 +58,29 @@ pip install scelabs-aegis
 
 ## Aegis Shell
 
-Aegis Shell is the easiest way to use Aegis as a control layer in your existing workflow.
+Aegis Shell is the zero-integration sidecar for testing Aegis against your existing AI pipeline.
 
-It runs alongside your current tooling with no SDK integration required. You can keep using Claude Code, Codex, Cursor, Copilot, or any other AI tool. Aegis observes repo and workflow signals, applies runtime control guidance, detects retry loops and scope drift, and reports estimated calls and cost saved.
+It runs alongside your current tooling with no SDK integration required. You can keep using Claude Code, Codex, Cursor, Copilot, or any other AI tool. Aegis observes repo and workflow signals, applies runtime control guidance, detects retry loops and scope drift, and reports observable impact metrics.
+
+Aegis Shell is a sidecar control layer:
+
+* your AI tool still does the work
+* Aegis does not write your code for you
+* Aegis does not run destructive repo operations
+* Aegis observes and emits control decisions
+
+Attach mode lets you simulate proof-of-value without editing your pipeline code:
+
+```bash
+aegis attach --cmd "python run_agent.py"
+```
+
+Attach mode reports:
+
+* observed instability in your current run
+* controls Aegis would have issued
+* projected impact
+* recommended SDK integration points
 
 ### Quick Start
 
@@ -79,8 +99,13 @@ Then use your AI tools normally.
 ```bash
 aegis start
 aegis status
+aegis attach --cmd "python run_agent.py"
 aegis summary
 aegis stats
+aegis control
+aegis control --json
+aegis control apply-prompt
+aegis control clear
 aegis stop
 aegis doctor
 aegis reset
@@ -96,10 +121,22 @@ Example summary output:
 [Aegis] Interventions:
 [Aegis] - Control signals issued: 2
 [Aegis] - Escalations: 1
+[Aegis] - Active controls issued: present
 [Aegis] Impact:
-[Aegis] - Estimated calls saved: 11
-[Aegis] - Estimated cost saved: $2.20
+[Aegis] - Estimated AI iterations avoided: 11
+[Aegis] - Prevented 2-4 unnecessary retries
+[Aegis] - Reduced scope from 6 files to 3
 ```
+
+Runtime files under `.aegis/`:
+
+* `session.jsonl` keeps event history
+* `control.json` is the active machine-readable control state for adapters/wrappers
+
+Upgrade path:
+
+* Shell: attach Aegis to your pipeline and see what it would control before you integrate.
+* SDK: integrate Aegis to enforce those controls in production.
 
 See full guide: [./docs/aegis-shell.md](./docs/aegis-shell.md)
 

@@ -76,7 +76,7 @@ class TestShellObserve(unittest.TestCase):
             ("git", "status", "--short"): subprocess.CompletedProcess(
                 args=[],
                 returncode=0,
-                stdout=" M .aegis/session.jsonl\n M app.py\n?? .aegis/auto_state.json\n",
+                stdout=" M .aegis/session.jsonl\n M app.py\n?? .aegis/auto_state.json\n?? .aegis/control.json\n",
                 stderr="",
             ),
             ("git", "diff", "--stat"): subprocess.CompletedProcess(
@@ -88,7 +88,7 @@ class TestShellObserve(unittest.TestCase):
             ("git", "diff", "--numstat"): subprocess.CompletedProcess(
                 args=[],
                 returncode=0,
-                stdout="2\t0\t.aegis/session.jsonl\n1\t0\tapp.py\n",
+                stdout="2\t0\t.aegis/session.jsonl\n1\t0\tapp.py\n4\t1\t.aegis/control.json\n",
                 stderr="",
             ),
         }
