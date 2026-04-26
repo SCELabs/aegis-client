@@ -61,6 +61,88 @@ class TestAegisResult(unittest.TestCase):
         self.assertEqual(result.metrics, {})
         self.assertFalse(result.used_fallback)
         self.assertEqual(result.scope_data, {})
+        self.assertEqual(result.execution, {})
+
+    def test_from_dict_preserves_execution_in_scope_data(self):
+        payload = {
+            "scope": "llm",
+            "scope_data": {
+                "execution": {
+                    "model_tier": "cheap",
+                    "context_mode": "narrow",
+                    "max_retries": 0,
+                    "allow_escalation": False,
+                }
+            },
+        }
+
+        result = AegisResult.from_dict(payload)
+        self.assertEqual(
+            result.scope_data["execution"],
+            {
+                "model_tier": "cheap",
+                "context_mode": "narrow",
+                "max_retries": 0,
+                "allow_escalation": False,
+            },
+        )
+
+    def test_execution_helpers_return_expected_values(self):
+        result = AegisResult(
+            scope_data={
+                "execution": {
+                    "model_tier": "mid",
+                    "context_mode": "balanced",
+                    "max_retries": 2,
+                    "allow_escalation": True,
+                }
+            }
+        )
+
+        self.assertEqual(
+            result.execution,
+            {
+                "model_tier": "mid",
+                "context_mode": "balanced",
+                "max_retries": 2,
+                "allow_escalation": True,
+            },
+        )
+        self.assertEqual(result.model_tier, "mid")
+        self.assertEqual(result.context_mode, "balanced")
+        self.assertEqual(result.max_retries, 2)
+        self.assertTrue(result.allow_escalation)
+        self.assertEqual(result.to_log_record()["execution"], result.execution)
+
+    def test_malformed_execution_returns_safe_defaults(self):
+        malformed_scope_data = AegisResult(scope_data="not-a-dict")  # type: ignore[arg-type]
+        self.assertEqual(malformed_scope_data.execution, {})
+        self.assertIsNone(malformed_scope_data.model_tier)
+        self.assertIsNone(malformed_scope_data.context_mode)
+        self.assertIsNone(malformed_scope_data.max_retries)
+        self.assertIsNone(malformed_scope_data.allow_escalation)
+
+        malformed_execution = AegisResult(scope_data={"execution": "not-a-dict"})
+        self.assertEqual(malformed_execution.execution, {})
+        self.assertIsNone(malformed_execution.model_tier)
+        self.assertIsNone(malformed_execution.context_mode)
+        self.assertIsNone(malformed_execution.max_retries)
+        self.assertIsNone(malformed_execution.allow_escalation)
+
+        invalid_types = AegisResult(
+            scope_data={
+                "execution": {
+                    "model_tier": 123,
+                    "context_mode": ["narrow"],
+                    "max_retries": True,
+                    "allow_escalation": "yes",
+                }
+            }
+        )
+        self.assertIsNone(invalid_types.model_tier)
+        self.assertIsNone(invalid_types.context_mode)
+        self.assertIsNone(invalid_types.max_retries)
+        self.assertIsNone(invalid_types.allow_escalation)
 
     def test_summary_and_summary_lines(self):
         result = AegisResult(
@@ -85,6 +167,25 @@ class TestAegisResult(unittest.TestCase):
         summary_text = result.summary()
         self.assertIsInstance(summary_text, str)
         self.assertIn("Scope: rag", summary_text)
+
+    def test_summary_includes_execution_line_when_present(self):
+        result = AegisResult(
+            scope="llm",
+            scope_data={
+                "execution": {
+                    "model_tier": "cheap",
+                    "context_mode": "narrow",
+                    "max_retries": 0,
+                    "allow_escalation": False,
+                }
+            },
+        )
+
+        summary_text = result.summary()
+        self.assertIn(
+            "Execution: model_tier=cheap, context=narrow, max_retries=0, escalation=False",
+            summary_text,
+        )
 
     def test_context_summary_includes_context_or_carry_forward_details(self):
         result = AegisResult(

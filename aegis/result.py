@@ -33,6 +33,34 @@ class AegisResult:
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
+    @property
+    def execution(self) -> dict[str, Any]:
+        scope_data = self.scope_data if isinstance(self.scope_data, dict) else {}
+        execution = scope_data.get("execution")
+        return execution if isinstance(execution, dict) else {}
+
+    @property
+    def model_tier(self) -> str | None:
+        value = self.execution.get("model_tier")
+        return value if isinstance(value, str) else None
+
+    @property
+    def context_mode(self) -> str | None:
+        value = self.execution.get("context_mode")
+        return value if isinstance(value, str) else None
+
+    @property
+    def max_retries(self) -> int | None:
+        value = self.execution.get("max_retries")
+        if isinstance(value, bool):
+            return None
+        return value if isinstance(value, int) else None
+
+    @property
+    def allow_escalation(self) -> bool | None:
+        value = self.execution.get("allow_escalation")
+        return value if isinstance(value, bool) else None
+
     def summary_lines(self) -> list[str]:
         scope = self.scope or "unknown"
         fallback = "yes" if self.used_fallback else "no"
@@ -80,6 +108,18 @@ class AegisResult:
                 break
         if metric_parts:
             lines.append(f"Metrics: {', '.join(metric_parts)}")
+
+        execution_parts = []
+        if self.model_tier is not None:
+            execution_parts.append(f"model_tier={self.model_tier}")
+        if self.context_mode is not None:
+            execution_parts.append(f"context={self.context_mode}")
+        if self.max_retries is not None:
+            execution_parts.append(f"max_retries={self.max_retries}")
+        if self.allow_escalation is not None:
+            execution_parts.append(f"escalation={self.allow_escalation}")
+        if execution_parts:
+            lines.append(f"Execution: {', '.join(execution_parts)}")
 
         carry_forward = self.metrics.get("carry_forward_count")
         scope_data = self.scope_data if isinstance(self.scope_data, dict) else {}
@@ -183,4 +223,5 @@ class AegisResult:
             "trace_steps": len(self.trace),
             "metrics": self.metrics,
             "explanation": self.explanation,
+            "execution": self.execution,
         }

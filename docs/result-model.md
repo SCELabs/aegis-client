@@ -46,6 +46,10 @@ Often includes controlled generation settings, for example:
 
 * `runtime_config`
 * `controlled_prompt`
+* `execution` (backend execution guidance surface)
+
+When present, prefer `result.execution` for execution guidance access.
+`execution.model_tier` is tier-based (`cheap`/`mid`/`premium`), not provider-specific.
 
 ### RAG Scope Data
 
