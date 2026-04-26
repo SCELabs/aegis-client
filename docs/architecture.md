@@ -80,6 +80,11 @@ All calls return `AegisResult` with control and observability data:
 * `explanation`
 * `scope`
 * `scope_data`
+* `execution` (from `scope_data.execution`, when present)
+* `model_tier` (`cheap`/`mid`/`premium`, when present)
+* `context_mode` (when present)
+* `max_retries` (when present)
+* `allow_escalation` (when present)
 
 `output` and `final_answer` may be empty depending on scope and backend response shape.
 

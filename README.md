@@ -391,6 +391,11 @@ result = client.auto().llm(...)
 * `explanation` — concise rationale
 * `scope` — llm, rag, step, context, or agent
 * `scope_data` — scope-specific runtime data
+* `execution` — execution guidance helper from `scope_data.execution` when present
+* `model_tier` — execution tier (`cheap`, `mid`, `premium`)
+* `context_mode` — backend-selected context mode (if provided)
+* `max_retries` — suggested retry budget (if provided)
+* `allow_escalation` — escalation guidance flag (if provided)
 
 ---
 
@@ -421,6 +426,22 @@ Inside `trace`:
   * relevant-file protection indicators
 
 These are optional but useful for debugging pipeline behavior.
+
+---
+
+### Execution Guidance
+
+When returned by the backend under `scope_data.execution`, the SDK also exposes helper access via:
+
+* `result.execution`
+* `result.model_tier`
+* `result.context_mode`
+* `result.max_retries`
+* `result.allow_escalation`
+
+Execution guidance is tier-based, not provider-specific.
+Aegis returns guidance only; it does not execute or route models for you.
+Your runtime maps tiers (`cheap`, `mid`, `premium`) to concrete models/providers.
 
 ---
 

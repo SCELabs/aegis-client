@@ -19,6 +19,11 @@ Typical fields include:
 * `explanation`
 * `scope`
 * `scope_data`
+* `execution` (helper for `scope_data.execution`, when present)
+* `model_tier` (`cheap` | `mid` | `premium`, when present)
+* `context_mode` (when present)
+* `max_retries` (when present)
+* `allow_escalation` (when present)
 * `output` (optional)
 * `final_answer` (optional)
 
@@ -48,8 +53,16 @@ Often includes controlled generation settings, for example:
 * `controlled_prompt`
 * `execution` (backend execution guidance surface)
 
-When present, prefer `result.execution` for execution guidance access.
-`execution.model_tier` is tier-based (`cheap`/`mid`/`premium`), not provider-specific.
+When present, prefer `result.execution` plus helper accessors:
+
+* `result.model_tier`
+* `result.context_mode`
+* `result.max_retries`
+* `result.allow_escalation`
+
+Execution guidance is tier-based (`cheap`/`mid`/`premium`), not provider-specific.
+Aegis returns execution guidance, but does not execute/model-route for you.
+Downstream runtimes map tiers to concrete models/providers.
 
 ### RAG Scope Data
 

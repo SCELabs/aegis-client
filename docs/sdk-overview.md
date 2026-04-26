@@ -121,6 +121,11 @@ Common fields include:
 * `explanation`
 * `scope`
 * `scope_data`
+* `execution` (from `scope_data.execution`, when present)
+* `model_tier` (`cheap`/`mid`/`premium`, when present)
+* `context_mode` (when present)
+* `max_retries` (when present)
+* `allow_escalation` (when present)
 
 AegisResult is a control/observability contract, not a guarantee of downstream model execution output.
 
